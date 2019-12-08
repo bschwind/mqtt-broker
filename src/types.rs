@@ -143,6 +143,78 @@ pub enum ConnectReason {
     ConnectionRateExceeded,
 }
 
+pub enum PublishAckReason {
+    Success,
+    NoMatchingSubscribers,
+    UnspecifiedError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    TopicNameInvalid,
+    PacketIdentifierInUse,
+    QuotaExceeded,
+    PayloadFormatInvalid,
+}
+
+pub enum PublishReceivedReason {
+    Success,
+    NoMatchingSubscribers,
+    UnspecifiedError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    TopicNameInvalid,
+    PacketIdentifierInUse,
+    QuotaExceeded,
+    PayloadFormatInvalid,
+}
+
+pub enum PublishReleaseReason {
+    Success,
+    PacketIdentifierNotFound,
+}
+
+pub enum PublishCompleteReason {
+    Success,
+    PacketIdentifierNotFound,
+}
+
+pub enum DisconnectReasonCode {
+    NormalDisconnection,
+    DisconnectWithWillMessage,
+    UnspecifiedError,
+    MalformedPacket,
+    ProtocolError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    ServerBusy,
+    ServerShuttingDown,
+    KeepAliveTimeout,
+    SessionTakenOver,
+    TopicFilterInvalid,
+    TopicNameInvalid,
+    ReceiveMaximumExceeded,
+    TopicAliasInvalid,
+    PacketTooLarge,
+    MessageRateTooHigh,
+    QuotaExceeded,
+    AdministrativeAction,
+    PayloadFormatInvalid,
+    RetainNotSupported,
+    QosNotSupported,
+    UseAnotherServer,
+    ServerMoved,
+    SharedSubscriptionNotAvailable,
+    ConnectionRateExceeded,
+    MaximumConnectTime,
+    SubscriptionIdentifiersNotAvailable,
+    WildcardSubscriptionsNotAvailable,
+}
+
+pub enum AuthenticateReasonCode {
+    Success,
+    ContinueAuthentication,
+    ReAuthenticate,
+}
+
 // Variable headers
 #[derive(Debug)]
 pub struct ConnectVariableHeader {
@@ -190,4 +262,107 @@ pub struct ConnectAckVariableHeader {
 pub struct PublishVariableHeader {
     pub topic_name: String,
     pub packet_id: Option<u16>,
+
+    // Properties
+    pub payload_format_indicator: Option<PayloadFormatIndicator>, // TODO(bschwind) - Is this truly optional?
+    pub message_expiry_interval: Option<MessageExpiryInterval>,
+    pub topic_alias: Option<TopicAlias>,
+    pub response_topic: Option<RepsonseTopic>,
+    pub correlation_data: Option<CorrelationData>,
+    pub user_properties: Vec<UserProperty>,
+    pub subscription_identifier: Option<SubscriptionIdentifier>,
+    pub content_type: Option<ContentType>,
+}
+
+pub struct PublishAckVariableHeader {
+    pub packet_id: u16,
+    pub reason_code: PublishAckReason,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct PublishReceivedVariableHeader {
+    pub packet_id: Option<u16>,
+    pub reason_code: PublishReceivedReason,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct PublishReleaseVariableHeader {
+    pub packet_id: u16,
+    pub reason_code: PublishReleaseReason,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct PublishCompleteVariableHeader {
+    pub packet_id: u16,
+    pub reason_code: PublishCompleteReason,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct SubscribeVariableHeader {
+    pub packet_id: u16,
+
+    // Properties
+    pub subscription_identifier: Option<SubscriptionIdentifier>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct SubscribeAckVariableHeader {
+    pub packet_id: u16,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct UnsubscribeVariableHeader {
+    pub packet_id: u16,
+
+    // Properties
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct UnsubscribeAckVariableHeader {
+    pub packet_id: u16,
+
+    // Properties
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+}
+
+pub struct PingRequestVariableHeader {}
+
+pub struct PingResponseVariableHeader {}
+
+pub struct DisconnectVariableHeader {
+    pub reason_code: DisconnectReasonCode,
+    pub packet_id: u16,
+
+    // Properties
+    pub session_expiry_interval: Option<SessionExpiryInterval>,
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
+    pub server_reference: Option<ServerReference>,
+}
+
+pub struct AuthenticateVariableHeader {
+    pub reason_code: DisconnectReasonCode,
+    pub packet_id: u16,
+
+    // Properties
+    pub authentication_method: Option<AuthenticationMethod>,
+    pub authentication_data: Option<AuthenticationData>,
+    pub reason_string: Option<ReasonString>,
+    pub user_properties: Vec<UserProperty>,
 }
