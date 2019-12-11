@@ -5,4 +5,7 @@ authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-tokio = "0.2.0-alpha.6"
+bytes = "0.5.0"
+tokio = {version = "0.2", features = ["tcp", "dns", "rt-threaded"] }
+tokio-util = {verison = "0.2", features = ["codec"] }
+futures = "0.3"
