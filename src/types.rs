@@ -31,7 +31,7 @@ pub enum PacketType {
     PingRequest,
     PingResponse,
     Disconnect,
-    Auth,
+    Authenticate,
 }
 
 #[derive(Debug)]
@@ -65,10 +65,23 @@ impl TryFrom<u8> for PacketType {
             12 => Ok(PacketType::PingRequest),
             13 => Ok(PacketType::PingResponse),
             14 => Ok(PacketType::Disconnect),
-            15 => Ok(PacketType::Auth),
+            15 => Ok(PacketType::Authenticate),
             _ => Err(ParseError::InvalidPacketType),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum QoS {
+    Zero,
+    One,
+    Two,
+}
+
+pub enum RetainHandling {
+    SendAtSubscribeTime,
+    SendAtSubscribeTimeIfNonexistent,
+    DoNotSend,
 }
 
 // Property structs
@@ -113,7 +126,7 @@ pub struct TopicAliasMaximum(u16);
 #[derive(Debug)]
 pub struct TopicAlias(u16);
 #[derive(Debug)]
-pub struct MaximumQos(u8);
+pub struct MaximumQos(QoS);
 #[derive(Debug)]
 pub struct RetainAvailable(u8);
 #[derive(Debug)]
@@ -186,6 +199,31 @@ pub enum PublishCompleteReason {
     PacketIdentifierNotFound,
 }
 
+pub enum SubscribeAckReason {
+    GrantedQoSZero,
+    GrantedQoSOne,
+    GrantedQoSTwo,
+    UnspecifiedError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    TopicFilterInvalid,
+    PacketIdentifierInUse,
+    QuotaExceeded,
+    SharedSubscriptionsNotSupported,
+    SubscriptionIdentifiersNotSupported,
+    WildcardSubscriptionsNotSupported,
+}
+
+pub enum UnsubscribeAckReason {
+    Success,
+    NoSubscriptionExisted,
+    UnspecifiedError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    TopicFilterInvalid,
+    PacketIdentifierInUse,
+}
+
 pub enum DisconnectReasonCode {
     NormalDisconnection,
     DisconnectWithWillMessage,
@@ -251,7 +289,7 @@ pub struct ConnectAckVariableHeader {
     // Properties
     pub session_expiry_interval: Option<SessionExpiryInterval>,
     pub receive_maximum: Option<ReceiveMaximum>,
-    pub maximum_qus: Option<MaximumQos>,
+    pub maximum_qos: Option<MaximumQos>,
     pub retain_available: Option<RetainAvailable>,
     pub maximum_packet_size: Option<MaximumPacketSize>,
     pub assigned_client_identifier: Option<AssignedClientIdentifier>,
@@ -374,4 +412,162 @@ pub struct AuthenticateVariableHeader {
     pub authentication_data: Option<AuthenticationData>,
     pub reason_string: Option<ReasonString>,
     pub user_properties: Vec<UserProperty>,
+}
+
+// Payloads
+pub struct ConnectPayload {
+    pub client_id: String,
+
+    // Will properties
+    pub will_delay_interval: Option<WilLDelayInterval>,
+    pub payload_format_indicator: Option<PayloadFormatIndicator>,
+    pub message_expiry_interval: Option<MessageExpiryInterval>,
+    pub content_type: Option<ContentType>,
+    pub response_topic: Option<RepsonseTopic>,
+    pub correlation_data: Option<CorrelationData>,
+    pub user_properties: Vec<UserProperty>,
+    pub will_topic: Option<String>,
+    pub will_payload: Option<Vec<u8>>,
+    pub user_name: Option<String>,
+    pub password: Option<String>,
+}
+
+pub struct ConnectAckPayload {}
+
+pub struct PublishPayload {
+    pub payload: Vec<u8>,
+}
+
+pub struct PublishAckPayload {}
+
+pub struct PublishReceivedPayload {}
+
+pub struct PublishReleasePayload {}
+
+pub struct PublishCompletePayload {}
+
+pub struct SubscriptionTopic {
+    pub topic: String,
+    pub maximum_qos: QoS,
+    pub no_local: bool,
+    pub retain_as_published: bool,
+    pub retain_handling: RetainHandling,
+}
+
+pub struct SubscribePayload {
+    pub subscription_topics: Vec<SubscriptionTopic>,
+}
+
+pub struct SubscribeAckPayload {
+    pub reason_codes: Vec<SubscribeAckReason>,
+}
+
+pub struct UnsubscribePayload {
+    pub topics: Vec<String>,
+}
+
+pub struct UnsubscribeAckPayload {
+    pub reason_codes: Vec<UnsubscribeAckReason>,
+}
+
+pub struct PingRequestPayload {}
+
+pub struct PingResponsePayload {}
+
+pub struct DisconnectPayload {}
+
+pub struct AuthenticatePayload {}
+
+// Control Packets
+pub struct ConnectPacket {
+    pub variable_header: ConnectVariableHeader,
+    pub payload: ConnectPayload,
+}
+
+pub struct ConnectAckPacket {
+    pub variable_header: ConnectAckVariableHeader,
+    pub payload: ConnectAckPayload,
+}
+
+pub struct PublishPacket {
+    pub variable_header: PublishVariableHeader,
+    pub payload: PublishPayload,
+}
+
+pub struct PublishAckPacket {
+    pub variable_header: PublishAckVariableHeader,
+    pub payload: PublishAckPayload,
+}
+
+pub struct PublishReceivedPacket {
+    pub variable_header: PublishReceivedVariableHeader,
+    pub payload: PublishReceivedPayload,
+}
+
+pub struct PublishReleasePacket {
+    pub variable_header: PublishReleaseVariableHeader,
+    pub payload: PublishReleasePayload,
+}
+
+pub struct PublishCompletePacket {
+    pub variable_header: PublishCompleteVariableHeader,
+    pub payload: PublishCompletePayload,
+}
+
+pub struct SubscribePacket {
+    pub variable_header: SubscribeVariableHeader,
+    pub payload: SubscribePayload,
+}
+
+pub struct SubscribeAckPacket {
+    pub variable_header: SubscribeAckVariableHeader,
+    pub payload: SubscribeAckPayload,
+}
+
+pub struct UnsubscribePacket {
+    pub variable_header: UnsubscribeVariableHeader,
+    pub payload: UnsubscribePayload,
+}
+
+pub struct UnsubscribeAckPacket {
+    pub variable_header: UnsubscribeAckVariableHeader,
+    pub payload: UnsubscribeAckPayload,
+}
+
+pub struct PingRequestPacket {
+    pub variable_header: PingRequestVariableHeader,
+    pub payload: PingRequestPayload,
+}
+
+pub struct PingResponsePacket {
+    pub variable_header: PingResponseVariableHeader,
+    pub payload: PingResponsePayload,
+}
+
+pub struct DisconnectPacket {
+    pub variable_header: DisconnectVariableHeader,
+    pub payload: DisconnectPayload,
+}
+
+pub struct AuthenticatePacket {
+    pub variable_header: AuthenticateVariableHeader,
+    pub payload: AuthenticatePayload,
+}
+
+pub enum _Packet {
+    Connect(ConnectPacket),
+    ConnectAck(ConnectAckPacket),
+    Publish(PublishPacket),
+    PublishAck(PublishAckPacket),
+    PublishReceived(PublishReceivedPacket),
+    PublishRelease(PublishReleasePacket),
+    PublishComplete(PublishCompletePacket),
+    Subscribe(SubscribePacket),
+    SubscribeAck(SubscribeAckPacket),
+    Unsubscribe(UnsubscribePacket),
+    UnsubscribeAck(UnsubscribeAckPacket),
+    PingRequest(PingRequestPacket),
+    PingResponse(PingResponsePacket),
+    Disconnect(DisconnectPacket),
+    Authenticate(AuthenticatePacket),
 }
