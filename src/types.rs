@@ -1,3 +1,4 @@
+use properties::*;
 use std::convert::TryFrom;
 
 #[derive(Debug)]
@@ -6,6 +7,8 @@ pub enum ParseError {
     InvalidRemainingLength,
     PacketTooLarge,
     InvalidUtf8,
+    InvalidQoS,
+    InvalidPropertyId,
     Io(std::io::Error),
 }
 
@@ -73,9 +76,9 @@ impl TryFrom<u8> for PacketType {
 
 #[derive(Debug)]
 pub enum QoS {
-    Zero,
-    One,
-    Two,
+    AtMostOnce,  // QoS 0
+    AtLeastOnce, // QoS 1
+    ExactlyOnce, // QoS 2
 }
 
 pub enum RetainHandling {
@@ -84,61 +87,95 @@ pub enum RetainHandling {
     DoNotSend,
 }
 
-// Property structs
-#[derive(Debug)]
-pub struct PayloadFormatIndicator(u8);
-#[derive(Debug)]
-pub struct MessageExpiryInterval(u32);
-#[derive(Debug)]
-pub struct ContentType(String);
-#[derive(Debug)]
-pub struct RepsonseTopic(String);
-#[derive(Debug)]
-pub struct CorrelationData(Vec<u8>);
-#[derive(Debug)]
-pub struct SubscriptionIdentifier(u32);
-#[derive(Debug)]
-pub struct SessionExpiryInterval(u32);
-#[derive(Debug)]
-pub struct AssignedClientIdentifier(String);
-#[derive(Debug)]
-pub struct ServerKeepAlive(u16);
-#[derive(Debug)]
-pub struct AuthenticationMethod(String);
-#[derive(Debug)]
-pub struct AuthenticationData(Vec<u8>);
-#[derive(Debug)]
-pub struct RequestProblemInformation(u8);
-#[derive(Debug)]
-pub struct WilLDelayInterval(u32);
-#[derive(Debug)]
-pub struct RequestResponseInformation(u8);
-#[derive(Debug)]
-pub struct ResponseInformation(String);
-#[derive(Debug)]
-pub struct ServerReference(String);
-#[derive(Debug)]
-pub struct ReasonString(String);
-#[derive(Debug)]
-pub struct ReceiveMaximum(u16);
-#[derive(Debug)]
-pub struct TopicAliasMaximum(u16);
-#[derive(Debug)]
-pub struct TopicAlias(u16);
-#[derive(Debug)]
-pub struct MaximumQos(QoS);
-#[derive(Debug)]
-pub struct RetainAvailable(u8);
-#[derive(Debug)]
-pub struct UserProperty(String, String);
-#[derive(Debug)]
-pub struct MaximumPacketSize(u32);
-#[derive(Debug)]
-pub struct WildcardSubscriptionAvailable(u8);
-#[derive(Debug)]
-pub struct SubscriptionIdentifierAvailable(u8);
-#[derive(Debug)]
-pub struct SharedSubscriptionAvailable(u8);
+pub mod properties {
+    use super::QoS;
+    // Property structs
+    #[derive(Debug)]
+    pub struct PayloadFormatIndicator(pub u8);
+    #[derive(Debug)]
+    pub struct MessageExpiryInterval(pub u32);
+    #[derive(Debug)]
+    pub struct ContentType(pub String);
+    #[derive(Debug)]
+    pub struct RepsonseTopic(pub String);
+    #[derive(Debug)]
+    pub struct CorrelationData(pub Vec<u8>);
+    #[derive(Debug)]
+    pub struct SubscriptionIdentifier(pub u32);
+    #[derive(Debug)]
+    pub struct SessionExpiryInterval(pub u32);
+    #[derive(Debug)]
+    pub struct AssignedClientIdentifier(pub String);
+    #[derive(Debug)]
+    pub struct ServerKeepAlive(pub u16);
+    #[derive(Debug)]
+    pub struct AuthenticationMethod(pub String);
+    #[derive(Debug)]
+    pub struct AuthenticationData(pub Vec<u8>);
+    #[derive(Debug)]
+    pub struct RequestProblemInformation(pub u8);
+    #[derive(Debug)]
+    pub struct WillDelayInterval(pub u32);
+    #[derive(Debug)]
+    pub struct RequestResponseInformation(pub u8);
+    #[derive(Debug)]
+    pub struct ResponseInformation(pub String);
+    #[derive(Debug)]
+    pub struct ServerReference(pub String);
+    #[derive(Debug)]
+    pub struct ReasonString(pub String);
+    #[derive(Debug)]
+    pub struct ReceiveMaximum(pub u16);
+    #[derive(Debug)]
+    pub struct TopicAliasMaximum(pub u16);
+    #[derive(Debug)]
+    pub struct TopicAlias(pub u16);
+    #[derive(Debug)]
+    pub struct MaximumQos(pub QoS);
+    #[derive(Debug)]
+    pub struct RetainAvailable(pub u8);
+    #[derive(Debug)]
+    pub struct UserProperty(pub String, pub String);
+    #[derive(Debug)]
+    pub struct MaximumPacketSize(pub u32);
+    #[derive(Debug)]
+    pub struct WildcardSubscriptionAvailable(pub u8);
+    #[derive(Debug)]
+    pub struct SubscriptionIdentifierAvailable(pub u8);
+    #[derive(Debug)]
+    pub struct SharedSubscriptionAvailable(pub u8);
+
+    #[derive(Debug)]
+    pub enum Property {
+        PayloadFormatIndicator(PayloadFormatIndicator),
+        MessageExpiryInterval(MessageExpiryInterval),
+        ContentType(ContentType),
+        RepsonseTopic(RepsonseTopic),
+        CorrelationData(CorrelationData),
+        SubscriptionIdentifier(SubscriptionIdentifier),
+        SessionExpiryInterval(SessionExpiryInterval),
+        AssignedClientIdentifier(AssignedClientIdentifier),
+        ServerKeepAlive(ServerKeepAlive),
+        AuthenticationMethod(AuthenticationMethod),
+        AuthenticationData(AuthenticationData),
+        RequestProblemInformation(RequestProblemInformation),
+        WillDelayInterval(WillDelayInterval),
+        RequestResponseInformation(RequestResponseInformation),
+        ResponseInformation(ResponseInformation),
+        ServerReference(ServerReference),
+        ReasonString(ReasonString),
+        ReceiveMaximum(ReceiveMaximum),
+        TopicAliasMaximum(TopicAliasMaximum),
+        TopicAlias(TopicAlias),
+        MaximumQos(MaximumQos),
+        RetainAvailable(RetainAvailable),
+        UserProperty(UserProperty),
+        MaximumPacketSize(MaximumPacketSize),
+        WildcardSubscriptionAvailable(WildcardSubscriptionAvailable),
+        SubscriptionIdentifierAvailable(SubscriptionIdentifierAvailable),
+        SharedSubscriptionAvailable(SharedSubscriptionAvailable),
+    }
+}
 
 pub enum ConnectReason {
     Success,
@@ -419,7 +456,7 @@ pub struct ConnectPayload {
     pub client_id: String,
 
     // Will properties
-    pub will_delay_interval: Option<WilLDelayInterval>,
+    pub will_delay_interval: Option<WillDelayInterval>,
     pub payload_format_indicator: Option<PayloadFormatIndicator>,
     pub message_expiry_interval: Option<MessageExpiryInterval>,
     pub content_type: Option<ContentType>,

@@ -23,8 +23,7 @@ impl Decoder for MqttCodec {
     type Item = Packet;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // TODO - currently this won't work correctly if we receive partial data. Ideally
-        //        we should keep a state machine to store the data we've read so far.
+        // TODO - Ideally we should keep a state machine to store the data we've read so far.
         parser::parse_mqtt(buf)
     }
 }
