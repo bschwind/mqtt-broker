@@ -92,14 +92,14 @@ fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>,
     loop {
         let encoded_byte = read_u8!(bytes);
 
-        value += ((encoded_byte & 0b01111111) as u32) * multiplier;
+        value += ((encoded_byte & 0b0111_1111) as u32) * multiplier;
         multiplier *= 128;
 
         if multiplier > (128 * 128 * 128) {
             return Err(ParseError::InvalidRemainingLength);
         }
 
-        if encoded_byte & 0b10000000 == 0b00000000 {
+        if encoded_byte & 0b1000_0000 == 0b0000_0000 {
             break;
         }
     }
@@ -113,17 +113,17 @@ fn encode_variable_int(value: u32, buf: &mut [u8]) -> usize {
 
     loop {
         let mut encoded_byte: u8 = (x % 128) as u8;
-        x = x / 128;
+        x /= 128;
 
         if x > 0 {
-            encoded_byte = encoded_byte | 128;
+            encoded_byte |= 128;
         }
 
         buf[byte_counter] = encoded_byte;
 
         byte_counter += 1;
 
-        if x <= 0 {
+        if x == 0 {
             break;
         }
     }
@@ -145,7 +145,7 @@ fn parse_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, Par
             Ok(Some(string))
         },
         Err(_) => {
-            return Err(ParseError::InvalidUtf8);
+            Err(ParseError::InvalidUtf8)
         },
     }
 }
@@ -364,7 +364,7 @@ pub fn parse_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, ParseError> {
 
     let first_byte = read_u8!(bytes);
 
-    let first_byte_val = (first_byte & 0b11110000) >> 4;
+    let first_byte_val = (first_byte & 0b1111_0000) >> 4;
     let packet_type = PacketType::try_from(first_byte_val)?;
     let remaining_packet_length = read_variable_int!(&mut bytes);
 
