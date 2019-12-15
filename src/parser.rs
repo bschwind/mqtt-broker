@@ -144,9 +144,7 @@ fn parse_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, Par
             bytes.advance(str_size_bytes);
             Ok(Some(string))
         },
-        Err(_) => {
-            Err(ParseError::InvalidUtf8)
-        },
+        Err(_) => Err(ParseError::InvalidUtf8),
     }
 }
 
@@ -302,7 +300,11 @@ fn parse_property(
     }
 }
 
-fn parse_properties(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<()>, ParseError> {
+// TODO - make this take a closure so we can grab properties we want from the stream
+fn parse_properties<F: FnMut(Property)>(
+    bytes: &mut Cursor<&mut BytesMut>,
+    mut closure: F,
+) -> Result<Option<()>, ParseError> {
     let property_length = read_variable_int!(bytes);
 
     if property_length == 0 {
@@ -319,7 +321,7 @@ fn parse_properties(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<()>, Par
         }
 
         let property = read_property!(bytes);
-        dbg!(property);
+        closure(property);
     }
 
     Ok(Some(()))
@@ -336,7 +338,32 @@ fn parse_variable_header(
             let connect_flags = read_u8!(bytes);
             let keep_alive = read_u16!(bytes);
 
-            return_if_none!(parse_properties(bytes)?);
+            let mut session_expiry_interval = None;
+            let mut receive_maximum = None;
+            let mut maximum_packet_size = None;
+            let mut topic_alias_maximum = None;
+            let mut request_response_information = None;
+            let mut request_problem_information = None;
+            let mut user_properties = vec![];
+            let mut authentication_method = None;
+            let mut authentication_data = None;
+
+            return_if_none!(parse_properties(bytes, |property| {
+                match property {
+                    Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
+                    Property::ReceiveMaximum(p) => receive_maximum = Some(p),
+                    Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
+                    Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
+                    Property::RequestResponseInformation(p) => {
+                        request_response_information = Some(p)
+                    },
+                    Property::RequestProblemInformation(p) => request_problem_information = Some(p),
+                    Property::UserProperty(p) => user_properties.push(p),
+                    Property::AuthenticationMethod(p) => authentication_method = Some(p),
+                    Property::AuthenticationData(p) => authentication_data = Some(p),
+                    _ => {}, // Invalid property for packet
+                }
+            })?);
 
             Ok(Some(ConnectVariableHeader {
                 protocol_name,
@@ -344,15 +371,15 @@ fn parse_variable_header(
                 connect_flags,
                 keep_alive,
 
-                session_expiry_interval: None,
-                receive_maximum: None,
-                maximum_packet_size: None,
-                topic_alias_maximum: None,
-                request_response_information: None,
-                request_problem_information: None,
-                user_properties: vec![],
-                authentication_method: None,
-                authentication_data: None,
+                session_expiry_interval,
+                receive_maximum,
+                maximum_packet_size,
+                topic_alias_maximum,
+                request_response_information,
+                request_problem_information,
+                user_properties,
+                authentication_method,
+                authentication_data,
             }))
         },
         _ => Ok(None),
