@@ -1,4 +1,7 @@
-use crate::types::{properties::*, ConnectVariableHeader, Packet, PacketType, ParseError, QoS};
+use crate::types::{
+    properties::*, ConnectPayload, ConnectVariableHeader, FinalWill, Packet, PacketType,
+    ParseError, QoS,
+};
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
 
@@ -256,13 +259,7 @@ fn parse_property(
         },
         36 => {
             let qos_byte = read_u8!(bytes);
-
-            let qos = match qos_byte {
-                0 => QoS::AtMostOnce,
-                1 => QoS::AtLeastOnce,
-                2 => QoS::ExactlyOnce,
-                _ => return Err(ParseError::InvalidQoS),
-            };
+            let qos = QoS::try_from(qos_byte)?;
 
             Ok(Some(Property::MaximumQos(MaximumQos(qos))))
         },
@@ -300,7 +297,6 @@ fn parse_property(
     }
 }
 
-// TODO - make this take a closure so we can grab properties we want from the stream
 fn parse_properties<F: FnMut(Property)>(
     bytes: &mut Cursor<&mut BytesMut>,
     mut closure: F,
@@ -365,10 +361,80 @@ fn parse_variable_header(
                 }
             })?);
 
+            // Start payload
+            let clean_start = 0b0000_0010 & connect_flags == 0b0000_0010;
+            let has_will = 0b0000_0100 & connect_flags == 0b0000_0100;
+            let will_qos_val = (0b0001_1000 & connect_flags) >> 3;
+            let will_qos = QoS::try_from(will_qos_val)?;
+            let retain_will = 0b0010_0000 & connect_flags == 0b0010_0000;
+            let has_password = 0b0100_0000 & connect_flags == 0b0100_0000;
+            let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
+
+            let client_id = read_string!(bytes);
+            let mut will = None;
+
+            if has_will {
+                let mut will_delay_interval = None;
+                let mut payload_format_indicator = None;
+                let mut message_expiry_interval = None;
+                let mut content_type = None;
+                let mut response_topic = None;
+                let mut correlation_data = None;
+                let mut user_properties = vec![];
+
+                return_if_none!(parse_properties(bytes, |property| {
+                    match property {
+                        Property::WillDelayInterval(p) => will_delay_interval = Some(p),
+                        Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
+                        Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
+                        Property::ContentType(p) => content_type = Some(p),
+                        Property::RepsonseTopic(p) => response_topic = Some(p),
+                        Property::CorrelationData(p) => correlation_data = Some(p),
+                        Property::UserProperty(p) => user_properties.push(p),
+                        _ => {}, // Invalid property for packet
+                    }
+                })?);
+
+                let topic = read_string!(bytes);
+                let payload = read_binary_data!(bytes);
+
+                will = Some(FinalWill {
+                    topic,
+                    payload,
+                    qos: will_qos,
+                    should_retain: retain_will,
+                    will_delay_interval,
+                    payload_format_indicator,
+                    message_expiry_interval,
+                    content_type,
+                    response_topic,
+                    correlation_data,
+                    user_properties,
+                });
+            }
+
+            let mut user_name = None;
+            let mut password = None;
+
+            if has_user_name {
+                user_name = Some(read_string!(bytes));
+            }
+
+            if has_password {
+                password = Some(read_string!(bytes));
+            }
+
+            let connect_payload = ConnectPayload { client_id, will, user_name, password };
+
+            dbg!(connect_payload);
+
+            // End payload
+
             Ok(Some(ConnectVariableHeader {
                 protocol_name,
                 protocol_level,
                 connect_flags,
+                clean_start,
                 keep_alive,
 
                 session_expiry_interval,
@@ -408,10 +474,10 @@ pub fn parse_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, ParseError> {
 
     println!("variable_header: {:?}", variable_header);
 
+    let cursor_pos = bytes.position() as usize;
     let bytes = bytes.into_inner();
 
-    let split_pos = cursor_pos + remaining_packet_length as usize;
-    let rest = bytes.split_to(split_pos);
+    let rest = bytes.split_to(cursor_pos);
     let packet = Packet::new(packet_type, &rest);
 
     Ok(Some(packet))

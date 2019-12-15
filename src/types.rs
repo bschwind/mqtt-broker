@@ -9,6 +9,7 @@ pub enum ParseError {
     InvalidUtf8,
     InvalidQoS,
     InvalidPropertyId,
+    InvalidPropertyForPacket,
     Io(std::io::Error),
 }
 
@@ -79,6 +80,19 @@ pub enum QoS {
     AtMostOnce,  // QoS 0
     AtLeastOnce, // QoS 1
     ExactlyOnce, // QoS 2
+}
+
+impl TryFrom<u8> for QoS {
+    type Error = ParseError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(QoS::AtMostOnce),
+            1 => Ok(QoS::AtLeastOnce),
+            2 => Ok(QoS::ExactlyOnce),
+            _ => Err(ParseError::InvalidQoS),
+        }
+    }
 }
 
 pub enum RetainHandling {
@@ -305,6 +319,7 @@ pub struct ConnectVariableHeader {
     pub protocol_name: String,
     pub protocol_level: u8,
     pub connect_flags: u8,
+    pub clean_start: bool,
     pub keep_alive: u16,
 
     // Properties
@@ -452,10 +467,14 @@ pub struct AuthenticateVariableHeader {
 }
 
 // Payloads
-pub struct ConnectPayload {
-    pub client_id: String,
+#[derive(Debug)]
+pub struct FinalWill {
+    pub topic: String,
+    pub payload: Vec<u8>,
+    pub qos: QoS,
+    pub should_retain: bool,
 
-    // Will properties
+    // Properties
     pub will_delay_interval: Option<WillDelayInterval>,
     pub payload_format_indicator: Option<PayloadFormatIndicator>,
     pub message_expiry_interval: Option<MessageExpiryInterval>,
@@ -463,8 +482,12 @@ pub struct ConnectPayload {
     pub response_topic: Option<RepsonseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
-    pub will_topic: Option<String>,
-    pub will_payload: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub struct ConnectPayload {
+    pub client_id: String,
+    pub will: Option<FinalWill>,
     pub user_name: Option<String>,
     pub password: Option<String>,
 }
