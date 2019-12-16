@@ -8,6 +8,7 @@ pub enum DecodeError {
     PacketTooLarge,
     InvalidUtf8,
     InvalidQoS,
+    InvalidConnectReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -204,6 +205,38 @@ pub enum ConnectReason {
     UseAnotherServer,
     ServerMoved,
     ConnectionRateExceeded,
+}
+
+impl TryFrom<u8> for ConnectReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(ConnectReason::Success),
+            128 => Ok(ConnectReason::UnspecifiedError),
+            129 => Ok(ConnectReason::MalformedPacket),
+            130 => Ok(ConnectReason::ProtocolError),
+            131 => Ok(ConnectReason::ImplementationSpecificError),
+            132 => Ok(ConnectReason::UnsupportedProtocolVersion),
+            133 => Ok(ConnectReason::ClientIdentifierNotValid),
+            134 => Ok(ConnectReason::BadUserNameOrPassword),
+            135 => Ok(ConnectReason::NotAuthorized),
+            136 => Ok(ConnectReason::ServerUnavailable),
+            137 => Ok(ConnectReason::ServerBusy),
+            138 => Ok(ConnectReason::Banned),
+            140 => Ok(ConnectReason::BadAuthenticationMethod),
+            144 => Ok(ConnectReason::TopicNameInvalid),
+            149 => Ok(ConnectReason::PacketTooLarge),
+            151 => Ok(ConnectReason::QuotaExceeded),
+            153 => Ok(ConnectReason::PayloadFormatInvalid),
+            154 => Ok(ConnectReason::RetainNotSupported),
+            155 => Ok(ConnectReason::QosNotSupported),
+            156 => Ok(ConnectReason::UseAnotherServer),
+            157 => Ok(ConnectReason::ServerMoved),
+            159 => Ok(ConnectReason::ConnectionRateExceeded),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
 }
 
 #[derive(Debug)]

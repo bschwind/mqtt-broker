@@ -1,4 +1,7 @@
-use crate::types::{properties::*, ConnectPacket, DecodeError, FinalWill, Packet, PacketType, QoS};
+use crate::types::{
+    properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, FinalWill, Packet,
+    PacketType, QoS,
+};
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
 
@@ -416,12 +419,88 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
     Ok(Some(Packet::Connect(packet)))
 }
 
+fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, DecodeError> {
+    let flags = read_u8!(bytes);
+    let session_present = (flags & 0b0000_0001) == 0b0000_0001;
+
+    let reason_code_byte = read_u8!(bytes);
+    let reason = ConnectReason::try_from(reason_code_byte)?;
+
+    let mut session_expiry_interval = None;
+    let mut receive_maximum = None;
+    let mut maximum_qos = None;
+    let mut retain_available = None;
+    let mut maximum_packet_size = None;
+    let mut assigned_client_identifier = None;
+    let mut topic_alias_maximum = None;
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+    let mut wildcard_subscription_available = None;
+    let mut subscription_identifiers_available = None;
+    let mut shared_subscription_available = None;
+    let mut server_keep_alive = None;
+    let mut response_information = None;
+    let mut server_reference = None;
+    let mut authentication_method = None;
+    let mut authentication_data = None;
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
+            Property::ReceiveMaximum(p) => receive_maximum = Some(p),
+            Property::MaximumQos(p) => maximum_qos = Some(p),
+            Property::RetainAvailable(p) => retain_available = Some(p),
+            Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
+            Property::AssignedClientIdentifier(p) => assigned_client_identifier = Some(p),
+            Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
+            Property::ReasonString(p) => reason_string = Some(p),
+            Property::UserProperty(p) => user_properties.push(p),
+            Property::WildcardSubscriptionAvailable(p) => wildcard_subscription_available = Some(p),
+            Property::SubscriptionIdentifierAvailable(p) => {
+                subscription_identifiers_available = Some(p)
+            },
+            Property::SharedSubscriptionAvailable(p) => shared_subscription_available = Some(p),
+            Property::ServerKeepAlive(p) => server_keep_alive = Some(p),
+            Property::ResponseInformation(p) => response_information = Some(p),
+            Property::ServerReference(p) => server_reference = Some(p),
+            Property::AuthenticationMethod(p) => authentication_method = Some(p),
+            Property::AuthenticationData(p) => authentication_data = Some(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    let packet = ConnectAckPacket {
+        session_present,
+        reason,
+        session_expiry_interval,
+        receive_maximum,
+        maximum_qos,
+        retain_available,
+        maximum_packet_size,
+        assigned_client_identifier,
+        topic_alias_maximum,
+        reason_string,
+        user_properties,
+        wildcard_subscription_available,
+        subscription_identifiers_available,
+        shared_subscription_available,
+        server_keep_alive,
+        response_information,
+        server_reference,
+        authentication_method,
+        authentication_data,
+    };
+
+    Ok(Some(Packet::ConnectAck(packet)))
+}
+
 fn decode_packet(
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
 ) -> Result<Option<Packet>, DecodeError> {
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
+        PacketType::ConnectAck => decode_connect_ack(bytes),
         _ => Ok(None),
     }
 }
