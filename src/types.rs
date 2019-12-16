@@ -272,7 +272,7 @@ pub enum UnsubscribeAckReason {
 }
 
 #[derive(Debug)]
-pub enum DisconnectReasonCode {
+pub enum DisconnectReason {
     NormalDisconnection,
     DisconnectWithWillMessage,
     UnspecifiedError,
@@ -305,7 +305,7 @@ pub enum DisconnectReasonCode {
 }
 
 #[derive(Debug)]
-pub enum AuthenticateReasonCode {
+pub enum AuthenticateReason {
     Success,
     ContinueAuthentication,
     ReAuthenticate,
@@ -509,7 +509,7 @@ pub struct UnsubscribeAckPacket {
 #[derive(Debug)]
 pub struct DisconnectPacket {
     // Variable header
-    pub reason_code: DisconnectReasonCode,
+    pub reason_code: DisconnectReason,
     pub packet_id: u16,
 
     // Properties
@@ -522,7 +522,7 @@ pub struct DisconnectPacket {
 #[derive(Debug)]
 pub struct AuthenticatePacket {
     // Variable header
-    pub reason_code: AuthenticateReasonCode,
+    pub reason_code: AuthenticateReason,
 
     // Properties
     pub authentication_method: Option<AuthenticationMethod>,
