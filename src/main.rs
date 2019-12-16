@@ -44,7 +44,13 @@ async fn client_handler(stream: TcpStream) {
     let mut framed_sock = Framed::new(stream, MqttCodec::new());
 
     while let Some(frame) = framed_sock.next().await {
-        println!("Got a frame: {:#?}", frame);
+        match frame {
+            Ok(frame) => println!("Got a frame: {:#?}", frame),
+            Err(err) => {
+                println!("Error while reading frame: {:?}", err);
+                break;
+            },
+        }
     }
 
     println!("Client disconnected");

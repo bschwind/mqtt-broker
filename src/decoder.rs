@@ -1,7 +1,4 @@
-use crate::types::{
-    properties::*, ConnectPacket, ConnectPayload, ConnectVariableHeader, DecodeError, FinalWill,
-    Packet, PacketType, QoS,
-};
+use crate::types::{properties::*, ConnectPacket, DecodeError, FinalWill, Packet, PacketType, QoS};
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
 
@@ -283,6 +280,8 @@ fn decode_properties<F: FnMut(Property)>(
         return Ok(Some(()));
     }
 
+    require_length!(bytes, property_length as usize);
+
     let start_cursor_pos = bytes.position();
 
     loop {
@@ -393,15 +392,11 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
         password = Some(read_string!(bytes));
     }
 
-    let payload = ConnectPayload { client_id, will, user_name, password };
-    // End payload
-
-    let variable_header = ConnectVariableHeader {
+    let packet = ConnectPacket {
         protocol_name,
         protocol_level,
         clean_start,
         keep_alive,
-
         session_expiry_interval,
         receive_maximum,
         maximum_packet_size,
@@ -411,9 +406,11 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
         user_properties,
         authentication_method,
         authentication_data,
+        client_id,
+        will,
+        user_name,
+        password,
     };
-
-    let packet = ConnectPacket { variable_header, payload };
 
     Ok(Some(Packet::Connect(packet)))
 }
