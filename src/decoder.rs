@@ -1,6 +1,6 @@
 use crate::types::{
-    properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, FinalWill, Packet,
-    PacketType, QoS,
+    properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, DisconnectPacket,
+    DisconnectReason, FinalWill, Packet, PacketType, QoS,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -494,20 +494,56 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     Ok(Some(Packet::ConnectAck(packet)))
 }
 
+fn decode_disconnect(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let reason_code_byte = read_u8!(bytes);
+    let reason = DisconnectReason::try_from(reason_code_byte)?;
+
+    let mut session_expiry_interval = None;
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+    let mut server_reference = None;
+
+    if remaining_packet_length >= 2 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                Property::ServerReference(p) => server_reference = Some(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
+
+    let packet = DisconnectPacket {
+        reason,
+        session_expiry_interval,
+        reason_string,
+        user_properties,
+        server_reference,
+    };
+
+    Ok(Some(Packet::Disconnect(packet)))
+}
+
 fn decode_packet(
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
+        PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
 }
 
 pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> {
     let mut bytes = Cursor::new(bytes);
-
     let first_byte = read_u8!(bytes);
 
     let first_byte_val = (first_byte & 0b1111_0000) >> 4;
@@ -523,7 +559,7 @@ pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> 
     }
 
     // TODO - use return_if_none! here after finishing decode_packet function
-    let packet = decode_packet(&packet_type, &mut bytes)?;
+    let packet = decode_packet(&packet_type, &mut bytes, remaining_packet_length)?;
 
     let cursor_pos = bytes.position() as usize;
     let bytes = bytes.into_inner();

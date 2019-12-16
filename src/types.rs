@@ -9,6 +9,7 @@ pub enum DecodeError {
     InvalidUtf8,
     InvalidQoS,
     InvalidConnectReason,
+    InvalidDisconnectReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -337,6 +338,45 @@ pub enum DisconnectReason {
     WildcardSubscriptionsNotAvailable,
 }
 
+impl TryFrom<u8> for DisconnectReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(DisconnectReason::NormalDisconnection),
+            4 => Ok(DisconnectReason::DisconnectWithWillMessage),
+            128 => Ok(DisconnectReason::UnspecifiedError),
+            129 => Ok(DisconnectReason::MalformedPacket),
+            130 => Ok(DisconnectReason::ProtocolError),
+            131 => Ok(DisconnectReason::ImplementationSpecificError),
+            135 => Ok(DisconnectReason::NotAuthorized),
+            137 => Ok(DisconnectReason::ServerBusy),
+            139 => Ok(DisconnectReason::ServerShuttingDown),
+            141 => Ok(DisconnectReason::KeepAliveTimeout),
+            142 => Ok(DisconnectReason::SessionTakenOver),
+            143 => Ok(DisconnectReason::TopicFilterInvalid),
+            144 => Ok(DisconnectReason::TopicNameInvalid),
+            147 => Ok(DisconnectReason::ReceiveMaximumExceeded),
+            148 => Ok(DisconnectReason::TopicAliasInvalid),
+            149 => Ok(DisconnectReason::PacketTooLarge),
+            150 => Ok(DisconnectReason::MessageRateTooHigh),
+            151 => Ok(DisconnectReason::QuotaExceeded),
+            152 => Ok(DisconnectReason::AdministrativeAction),
+            153 => Ok(DisconnectReason::PayloadFormatInvalid),
+            154 => Ok(DisconnectReason::RetainNotSupported),
+            155 => Ok(DisconnectReason::QosNotSupported),
+            156 => Ok(DisconnectReason::UseAnotherServer),
+            157 => Ok(DisconnectReason::ServerMoved),
+            158 => Ok(DisconnectReason::SharedSubscriptionNotAvailable),
+            159 => Ok(DisconnectReason::ConnectionRateExceeded),
+            160 => Ok(DisconnectReason::MaximumConnectTime),
+            161 => Ok(DisconnectReason::SubscriptionIdentifiersNotAvailable),
+            162 => Ok(DisconnectReason::WildcardSubscriptionsNotAvailable),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum AuthenticateReason {
     Success,
@@ -542,8 +582,7 @@ pub struct UnsubscribeAckPacket {
 #[derive(Debug)]
 pub struct DisconnectPacket {
     // Variable header
-    pub reason_code: DisconnectReason,
-    pub packet_id: u16,
+    pub reason: DisconnectReason,
 
     // Properties
     pub session_expiry_interval: Option<SessionExpiryInterval>,
