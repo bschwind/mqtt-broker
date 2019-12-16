@@ -2,7 +2,7 @@ use properties::*;
 use std::convert::TryFrom;
 
 #[derive(Debug)]
-pub enum ParseError {
+pub enum DecodeError {
     InvalidPacketType,
     InvalidRemainingLength,
     PacketTooLarge,
@@ -13,9 +13,9 @@ pub enum ParseError {
     Io(std::io::Error),
 }
 
-impl From<std::io::Error> for ParseError {
+impl From<std::io::Error> for DecodeError {
     fn from(err: std::io::Error) -> Self {
-        ParseError::Io(err)
+        DecodeError::Io(err)
     }
 }
 
@@ -38,20 +38,8 @@ pub enum PacketType {
     Authenticate,
 }
 
-#[derive(Debug)]
-pub struct Packet {
-    packet_type: PacketType,
-    payload: Vec<u8>,
-}
-
-impl Packet {
-    pub fn new(packet_type: PacketType, payload: &[u8]) -> Self {
-        Self { packet_type, payload: payload.into() }
-    }
-}
-
 impl TryFrom<u8> for PacketType {
-    type Error = ParseError;
+    type Error = DecodeError;
 
     fn try_from(byte: u8) -> Result<Self, Self::Error> {
         match byte {
@@ -70,7 +58,7 @@ impl TryFrom<u8> for PacketType {
             13 => Ok(PacketType::PingResponse),
             14 => Ok(PacketType::Disconnect),
             15 => Ok(PacketType::Authenticate),
-            _ => Err(ParseError::InvalidPacketType),
+            _ => Err(DecodeError::InvalidPacketType),
         }
     }
 }
@@ -83,18 +71,19 @@ pub enum QoS {
 }
 
 impl TryFrom<u8> for QoS {
-    type Error = ParseError;
+    type Error = DecodeError;
 
     fn try_from(byte: u8) -> Result<Self, Self::Error> {
         match byte {
             0 => Ok(QoS::AtMostOnce),
             1 => Ok(QoS::AtLeastOnce),
             2 => Ok(QoS::ExactlyOnce),
-            _ => Err(ParseError::InvalidQoS),
+            _ => Err(DecodeError::InvalidQoS),
         }
     }
 }
 
+#[derive(Debug)]
 pub enum RetainHandling {
     SendAtSubscribeTime,
     SendAtSubscribeTimeIfNonexistent,
@@ -191,6 +180,7 @@ pub mod properties {
     }
 }
 
+#[derive(Debug)]
 pub enum ConnectReason {
     Success,
     UnspecifiedError,
@@ -216,6 +206,7 @@ pub enum ConnectReason {
     ConnectionRateExceeded,
 }
 
+#[derive(Debug)]
 pub enum PublishAckReason {
     Success,
     NoMatchingSubscribers,
@@ -228,6 +219,7 @@ pub enum PublishAckReason {
     PayloadFormatInvalid,
 }
 
+#[derive(Debug)]
 pub enum PublishReceivedReason {
     Success,
     NoMatchingSubscribers,
@@ -240,16 +232,19 @@ pub enum PublishReceivedReason {
     PayloadFormatInvalid,
 }
 
+#[derive(Debug)]
 pub enum PublishReleaseReason {
     Success,
     PacketIdentifierNotFound,
 }
 
+#[derive(Debug)]
 pub enum PublishCompleteReason {
     Success,
     PacketIdentifierNotFound,
 }
 
+#[derive(Debug)]
 pub enum SubscribeAckReason {
     GrantedQoSZero,
     GrantedQoSOne,
@@ -265,6 +260,7 @@ pub enum SubscribeAckReason {
     WildcardSubscriptionsNotSupported,
 }
 
+#[derive(Debug)]
 pub enum UnsubscribeAckReason {
     Success,
     NoSubscriptionExisted,
@@ -275,6 +271,7 @@ pub enum UnsubscribeAckReason {
     PacketIdentifierInUse,
 }
 
+#[derive(Debug)]
 pub enum DisconnectReasonCode {
     NormalDisconnection,
     DisconnectWithWillMessage,
@@ -318,7 +315,6 @@ pub enum AuthenticateReasonCode {
 pub struct ConnectVariableHeader {
     pub protocol_name: String,
     pub protocol_level: u8,
-    pub connect_flags: u8,
     pub clean_start: bool,
     pub keep_alive: u16,
 
@@ -334,6 +330,7 @@ pub struct ConnectVariableHeader {
     pub authentication_data: Option<AuthenticationData>,
 }
 
+#[derive(Debug)]
 pub struct ConnectAckVariableHeader {
     pub session_present: bool,
     pub reason: ConnectReason,
@@ -358,6 +355,7 @@ pub struct ConnectAckVariableHeader {
     pub authentication_data: Option<AuthenticationData>,
 }
 
+#[derive(Debug)]
 pub struct PublishVariableHeader {
     pub topic_name: String,
     pub packet_id: Option<u16>,
@@ -373,6 +371,7 @@ pub struct PublishVariableHeader {
     pub content_type: Option<ContentType>,
 }
 
+#[derive(Debug)]
 pub struct PublishAckVariableHeader {
     pub packet_id: u16,
     pub reason_code: PublishAckReason,
@@ -382,6 +381,7 @@ pub struct PublishAckVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct PublishReceivedVariableHeader {
     pub packet_id: Option<u16>,
     pub reason_code: PublishReceivedReason,
@@ -391,6 +391,7 @@ pub struct PublishReceivedVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct PublishReleaseVariableHeader {
     pub packet_id: u16,
     pub reason_code: PublishReleaseReason,
@@ -400,6 +401,7 @@ pub struct PublishReleaseVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct PublishCompleteVariableHeader {
     pub packet_id: u16,
     pub reason_code: PublishCompleteReason,
@@ -409,6 +411,7 @@ pub struct PublishCompleteVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct SubscribeVariableHeader {
     pub packet_id: u16,
 
@@ -417,6 +420,7 @@ pub struct SubscribeVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct SubscribeAckVariableHeader {
     pub packet_id: u16,
 
@@ -425,6 +429,7 @@ pub struct SubscribeAckVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribeVariableHeader {
     pub packet_id: u16,
 
@@ -432,6 +437,7 @@ pub struct UnsubscribeVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribeAckVariableHeader {
     pub packet_id: u16,
 
@@ -440,10 +446,13 @@ pub struct UnsubscribeAckVariableHeader {
     pub user_properties: Vec<UserProperty>,
 }
 
+#[derive(Debug)]
 pub struct PingRequestVariableHeader {}
 
+#[derive(Debug)]
 pub struct PingResponseVariableHeader {}
 
+#[derive(Debug)]
 pub struct DisconnectVariableHeader {
     pub reason_code: DisconnectReasonCode,
     pub packet_id: u16,
@@ -455,6 +464,7 @@ pub struct DisconnectVariableHeader {
     pub server_reference: Option<ServerReference>,
 }
 
+#[derive(Debug)]
 pub struct AuthenticateVariableHeader {
     pub reason_code: DisconnectReasonCode,
     pub packet_id: u16,
@@ -492,20 +502,27 @@ pub struct ConnectPayload {
     pub password: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct ConnectAckPayload {}
 
+#[derive(Debug)]
 pub struct PublishPayload {
     pub payload: Vec<u8>,
 }
 
+#[derive(Debug)]
 pub struct PublishAckPayload {}
 
+#[derive(Debug)]
 pub struct PublishReceivedPayload {}
 
+#[derive(Debug)]
 pub struct PublishReleasePayload {}
 
+#[derive(Debug)]
 pub struct PublishCompletePayload {}
 
+#[derive(Debug)]
 pub struct SubscriptionTopic {
     pub topic: String,
     pub maximum_qos: QoS,
@@ -514,107 +531,131 @@ pub struct SubscriptionTopic {
     pub retain_handling: RetainHandling,
 }
 
+#[derive(Debug)]
 pub struct SubscribePayload {
     pub subscription_topics: Vec<SubscriptionTopic>,
 }
 
+#[derive(Debug)]
 pub struct SubscribeAckPayload {
     pub reason_codes: Vec<SubscribeAckReason>,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribePayload {
     pub topics: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribeAckPayload {
     pub reason_codes: Vec<UnsubscribeAckReason>,
 }
 
+#[derive(Debug)]
 pub struct PingRequestPayload {}
 
+#[derive(Debug)]
 pub struct PingResponsePayload {}
 
+#[derive(Debug)]
 pub struct DisconnectPayload {}
 
+#[derive(Debug)]
 pub struct AuthenticatePayload {}
 
 // Control Packets
+#[derive(Debug)]
 pub struct ConnectPacket {
     pub variable_header: ConnectVariableHeader,
     pub payload: ConnectPayload,
 }
 
+#[derive(Debug)]
 pub struct ConnectAckPacket {
     pub variable_header: ConnectAckVariableHeader,
     pub payload: ConnectAckPayload,
 }
 
+#[derive(Debug)]
 pub struct PublishPacket {
     pub variable_header: PublishVariableHeader,
     pub payload: PublishPayload,
 }
 
+#[derive(Debug)]
 pub struct PublishAckPacket {
     pub variable_header: PublishAckVariableHeader,
     pub payload: PublishAckPayload,
 }
 
+#[derive(Debug)]
 pub struct PublishReceivedPacket {
     pub variable_header: PublishReceivedVariableHeader,
     pub payload: PublishReceivedPayload,
 }
 
+#[derive(Debug)]
 pub struct PublishReleasePacket {
     pub variable_header: PublishReleaseVariableHeader,
     pub payload: PublishReleasePayload,
 }
 
+#[derive(Debug)]
 pub struct PublishCompletePacket {
     pub variable_header: PublishCompleteVariableHeader,
     pub payload: PublishCompletePayload,
 }
 
+#[derive(Debug)]
 pub struct SubscribePacket {
     pub variable_header: SubscribeVariableHeader,
     pub payload: SubscribePayload,
 }
 
+#[derive(Debug)]
 pub struct SubscribeAckPacket {
     pub variable_header: SubscribeAckVariableHeader,
     pub payload: SubscribeAckPayload,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribePacket {
     pub variable_header: UnsubscribeVariableHeader,
     pub payload: UnsubscribePayload,
 }
 
+#[derive(Debug)]
 pub struct UnsubscribeAckPacket {
     pub variable_header: UnsubscribeAckVariableHeader,
     pub payload: UnsubscribeAckPayload,
 }
 
+#[derive(Debug)]
 pub struct PingRequestPacket {
     pub variable_header: PingRequestVariableHeader,
     pub payload: PingRequestPayload,
 }
 
+#[derive(Debug)]
 pub struct PingResponsePacket {
     pub variable_header: PingResponseVariableHeader,
     pub payload: PingResponsePayload,
 }
 
+#[derive(Debug)]
 pub struct DisconnectPacket {
     pub variable_header: DisconnectVariableHeader,
     pub payload: DisconnectPayload,
 }
 
+#[derive(Debug)]
 pub struct AuthenticatePacket {
     pub variable_header: AuthenticateVariableHeader,
     pub payload: AuthenticatePayload,
 }
 
-pub enum _Packet {
+#[derive(Debug)]
+pub enum Packet {
     Connect(ConnectPacket),
     ConnectAck(ConnectAckPacket),
     Publish(PublishPacket),

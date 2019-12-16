@@ -1,4 +1,4 @@
-use crate::types::{Packet, ParseError};
+use crate::types::{DecodeError, Packet};
 use bytes::BytesMut;
 use futures::StreamExt;
 use tokio::{
@@ -7,7 +7,8 @@ use tokio::{
 };
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
-mod parser;
+mod decoder;
+mod encoder;
 mod types;
 
 pub struct MqttCodec;
@@ -19,20 +20,20 @@ impl MqttCodec {
 }
 
 impl Decoder for MqttCodec {
-    type Error = ParseError;
+    type Error = DecodeError;
     type Item = Packet;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         // TODO - Ideally we should keep a state machine to store the data we've read so far.
-        parser::parse_mqtt(buf)
+        decoder::decode_mqtt(buf)
     }
 }
 
 impl Encoder for MqttCodec {
-    type Error = ParseError;
+    type Error = DecodeError;
     type Item = ();
 
-    fn encode(&mut self, _data: Self::Item, _bytes: &mut BytesMut) -> Result<(), ParseError> {
+    fn encode(&mut self, _data: Self::Item, _bytes: &mut BytesMut) -> Result<(), DecodeError> {
         Ok(())
     }
 }
@@ -43,7 +44,7 @@ async fn client_handler(stream: TcpStream) {
     let mut framed_sock = Framed::new(stream, MqttCodec::new());
 
     while let Some(frame) = framed_sock.next().await {
-        println!("Got a frame: {:?}", frame);
+        println!("Got a frame: {:#?}", frame);
     }
 
     println!("Client disconnected");
@@ -52,6 +53,8 @@ async fn client_handler(stream: TcpStream) {
 async fn server_loop() -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = "0.0.0.0:1883";
     let mut listener = TcpListener::bind(bind_addr).await?;
+
+    println!("Listening on {}", bind_addr);
 
     loop {
         let (socket, addr) = listener.accept().await?;

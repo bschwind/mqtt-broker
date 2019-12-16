@@ -1,6 +1,6 @@
 use crate::types::{
-    properties::*, ConnectPayload, ConnectVariableHeader, FinalWill, Packet, PacketType,
-    ParseError, QoS,
+    properties::*, ConnectPacket, ConnectPayload, ConnectVariableHeader, DecodeError, FinalWill,
+    Packet, PacketType, QoS,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -62,13 +62,13 @@ macro_rules! read_variable_int {
 
 macro_rules! read_string {
     ($bytes: expr) => {{
-        return_if_none!(parse_string($bytes)?)
+        return_if_none!(decode_string($bytes)?)
     }};
 }
 
 macro_rules! read_binary_data {
     ($bytes: expr) => {{
-        return_if_none!(parse_binary_data($bytes)?)
+        return_if_none!(decode_binary_data($bytes)?)
     }};
 }
 
@@ -84,11 +84,11 @@ macro_rules! read_string_pair {
 macro_rules! read_property {
     ($bytes: expr) => {{
         let property_id = read_variable_int!($bytes);
-        return_if_none!(parse_property(property_id, $bytes)?)
+        return_if_none!(decode_property(property_id, $bytes)?)
     }};
 }
 
-fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>, ParseError> {
+fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>, DecodeError> {
     let mut multiplier = 1;
     let mut value: u32 = 0;
 
@@ -99,7 +99,7 @@ fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>,
         multiplier *= 128;
 
         if multiplier > (128 * 128 * 128) {
-            return Err(ParseError::InvalidRemainingLength);
+            return Err(DecodeError::InvalidRemainingLength);
         }
 
         if encoded_byte & 0b1000_0000 == 0b0000_0000 {
@@ -110,31 +110,7 @@ fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>,
     Ok(Some(value))
 }
 
-fn encode_variable_int(value: u32, buf: &mut [u8]) -> usize {
-    let mut x = value;
-    let mut byte_counter = 0;
-
-    loop {
-        let mut encoded_byte: u8 = (x % 128) as u8;
-        x /= 128;
-
-        if x > 0 {
-            encoded_byte |= 128;
-        }
-
-        buf[byte_counter] = encoded_byte;
-
-        byte_counter += 1;
-
-        if x == 0 {
-            break;
-        }
-    }
-
-    byte_counter
-}
-
-fn parse_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, ParseError> {
+fn decode_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, DecodeError> {
     let str_size_bytes = read_u16!(bytes) as usize;
 
     require_length!(bytes, str_size_bytes);
@@ -147,11 +123,11 @@ fn parse_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, Par
             bytes.advance(str_size_bytes);
             Ok(Some(string))
         },
-        Err(_) => Err(ParseError::InvalidUtf8),
+        Err(_) => Err(DecodeError::InvalidUtf8),
     }
 }
 
-fn parse_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8>>, ParseError> {
+fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8>>, DecodeError> {
     let data_size_bytes = read_u16!(bytes) as usize;
     require_length!(bytes, data_size_bytes);
 
@@ -160,10 +136,10 @@ fn parse_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8>
     Ok(Some(bytes.get_ref()[position..(position + data_size_bytes)].into()))
 }
 
-fn parse_property(
+fn decode_property(
     property_id: u32,
     bytes: &mut Cursor<&mut BytesMut>,
-) -> Result<Option<Property>, ParseError> {
+) -> Result<Option<Property>, DecodeError> {
     match property_id {
         1 => {
             let format_indicator = read_u8!(bytes);
@@ -293,14 +269,14 @@ fn parse_property(
                 shared_subscription_available,
             ))))
         },
-        _ => Err(ParseError::InvalidPropertyId),
+        _ => Err(DecodeError::InvalidPropertyId),
     }
 }
 
-fn parse_properties<F: FnMut(Property)>(
+fn decode_properties<F: FnMut(Property)>(
     bytes: &mut Cursor<&mut BytesMut>,
     mut closure: F,
-) -> Result<Option<()>, ParseError> {
+) -> Result<Option<()>, DecodeError> {
     let property_length = read_variable_int!(bytes);
 
     if property_length == 0 {
@@ -323,136 +299,136 @@ fn parse_properties<F: FnMut(Property)>(
     Ok(Some(()))
 }
 
-fn parse_variable_header(
+fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, DecodeError> {
+    let protocol_name = read_string!(bytes);
+    let protocol_level = read_u8!(bytes);
+    let connect_flags = read_u8!(bytes);
+    let keep_alive = read_u16!(bytes);
+
+    let mut session_expiry_interval = None;
+    let mut receive_maximum = None;
+    let mut maximum_packet_size = None;
+    let mut topic_alias_maximum = None;
+    let mut request_response_information = None;
+    let mut request_problem_information = None;
+    let mut user_properties = vec![];
+    let mut authentication_method = None;
+    let mut authentication_data = None;
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
+            Property::ReceiveMaximum(p) => receive_maximum = Some(p),
+            Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
+            Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
+            Property::RequestResponseInformation(p) => request_response_information = Some(p),
+            Property::RequestProblemInformation(p) => request_problem_information = Some(p),
+            Property::UserProperty(p) => user_properties.push(p),
+            Property::AuthenticationMethod(p) => authentication_method = Some(p),
+            Property::AuthenticationData(p) => authentication_data = Some(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    // Start payload
+    let clean_start = 0b0000_0010 & connect_flags == 0b0000_0010;
+    let has_will = 0b0000_0100 & connect_flags == 0b0000_0100;
+    let will_qos_val = (0b0001_1000 & connect_flags) >> 3;
+    let will_qos = QoS::try_from(will_qos_val)?;
+    let retain_will = 0b0010_0000 & connect_flags == 0b0010_0000;
+    let has_password = 0b0100_0000 & connect_flags == 0b0100_0000;
+    let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
+
+    let client_id = read_string!(bytes);
+    let mut will = None;
+
+    if has_will {
+        let mut will_delay_interval = None;
+        let mut payload_format_indicator = None;
+        let mut message_expiry_interval = None;
+        let mut content_type = None;
+        let mut response_topic = None;
+        let mut correlation_data = None;
+        let mut user_properties = vec![];
+
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::WillDelayInterval(p) => will_delay_interval = Some(p),
+                Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
+                Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
+                Property::ContentType(p) => content_type = Some(p),
+                Property::RepsonseTopic(p) => response_topic = Some(p),
+                Property::CorrelationData(p) => correlation_data = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+
+        let topic = read_string!(bytes);
+        let payload = read_binary_data!(bytes);
+
+        will = Some(FinalWill {
+            topic,
+            payload,
+            qos: will_qos,
+            should_retain: retain_will,
+            will_delay_interval,
+            payload_format_indicator,
+            message_expiry_interval,
+            content_type,
+            response_topic,
+            correlation_data,
+            user_properties,
+        });
+    }
+
+    let mut user_name = None;
+    let mut password = None;
+
+    if has_user_name {
+        user_name = Some(read_string!(bytes));
+    }
+
+    if has_password {
+        password = Some(read_string!(bytes));
+    }
+
+    let payload = ConnectPayload { client_id, will, user_name, password };
+    // End payload
+
+    let variable_header = ConnectVariableHeader {
+        protocol_name,
+        protocol_level,
+        clean_start,
+        keep_alive,
+
+        session_expiry_interval,
+        receive_maximum,
+        maximum_packet_size,
+        topic_alias_maximum,
+        request_response_information,
+        request_problem_information,
+        user_properties,
+        authentication_method,
+        authentication_data,
+    };
+
+    let packet = ConnectPacket { variable_header, payload };
+
+    Ok(Some(Packet::Connect(packet)))
+}
+
+fn decode_packet(
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
-) -> Result<Option<ConnectVariableHeader>, ParseError> {
+) -> Result<Option<Packet>, DecodeError> {
     match packet_type {
-        PacketType::Connect => {
-            let protocol_name = read_string!(bytes);
-            let protocol_level = read_u8!(bytes);
-            let connect_flags = read_u8!(bytes);
-            let keep_alive = read_u16!(bytes);
-
-            let mut session_expiry_interval = None;
-            let mut receive_maximum = None;
-            let mut maximum_packet_size = None;
-            let mut topic_alias_maximum = None;
-            let mut request_response_information = None;
-            let mut request_problem_information = None;
-            let mut user_properties = vec![];
-            let mut authentication_method = None;
-            let mut authentication_data = None;
-
-            return_if_none!(parse_properties(bytes, |property| {
-                match property {
-                    Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
-                    Property::ReceiveMaximum(p) => receive_maximum = Some(p),
-                    Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
-                    Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
-                    Property::RequestResponseInformation(p) => {
-                        request_response_information = Some(p)
-                    },
-                    Property::RequestProblemInformation(p) => request_problem_information = Some(p),
-                    Property::UserProperty(p) => user_properties.push(p),
-                    Property::AuthenticationMethod(p) => authentication_method = Some(p),
-                    Property::AuthenticationData(p) => authentication_data = Some(p),
-                    _ => {}, // Invalid property for packet
-                }
-            })?);
-
-            // Start payload
-            let clean_start = 0b0000_0010 & connect_flags == 0b0000_0010;
-            let has_will = 0b0000_0100 & connect_flags == 0b0000_0100;
-            let will_qos_val = (0b0001_1000 & connect_flags) >> 3;
-            let will_qos = QoS::try_from(will_qos_val)?;
-            let retain_will = 0b0010_0000 & connect_flags == 0b0010_0000;
-            let has_password = 0b0100_0000 & connect_flags == 0b0100_0000;
-            let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
-
-            let client_id = read_string!(bytes);
-            let mut will = None;
-
-            if has_will {
-                let mut will_delay_interval = None;
-                let mut payload_format_indicator = None;
-                let mut message_expiry_interval = None;
-                let mut content_type = None;
-                let mut response_topic = None;
-                let mut correlation_data = None;
-                let mut user_properties = vec![];
-
-                return_if_none!(parse_properties(bytes, |property| {
-                    match property {
-                        Property::WillDelayInterval(p) => will_delay_interval = Some(p),
-                        Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
-                        Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
-                        Property::ContentType(p) => content_type = Some(p),
-                        Property::RepsonseTopic(p) => response_topic = Some(p),
-                        Property::CorrelationData(p) => correlation_data = Some(p),
-                        Property::UserProperty(p) => user_properties.push(p),
-                        _ => {}, // Invalid property for packet
-                    }
-                })?);
-
-                let topic = read_string!(bytes);
-                let payload = read_binary_data!(bytes);
-
-                will = Some(FinalWill {
-                    topic,
-                    payload,
-                    qos: will_qos,
-                    should_retain: retain_will,
-                    will_delay_interval,
-                    payload_format_indicator,
-                    message_expiry_interval,
-                    content_type,
-                    response_topic,
-                    correlation_data,
-                    user_properties,
-                });
-            }
-
-            let mut user_name = None;
-            let mut password = None;
-
-            if has_user_name {
-                user_name = Some(read_string!(bytes));
-            }
-
-            if has_password {
-                password = Some(read_string!(bytes));
-            }
-
-            let connect_payload = ConnectPayload { client_id, will, user_name, password };
-
-            dbg!(connect_payload);
-
-            // End payload
-
-            Ok(Some(ConnectVariableHeader {
-                protocol_name,
-                protocol_level,
-                connect_flags,
-                clean_start,
-                keep_alive,
-
-                session_expiry_interval,
-                receive_maximum,
-                maximum_packet_size,
-                topic_alias_maximum,
-                request_response_information,
-                request_problem_information,
-                user_properties,
-                authentication_method,
-                authentication_data,
-            }))
-        },
+        PacketType::Connect => decode_connect(bytes),
         _ => Ok(None),
     }
 }
 
-pub fn parse_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, ParseError> {
+pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> {
     let mut bytes = Cursor::new(bytes);
 
     let first_byte = read_u8!(bytes);
@@ -469,16 +445,13 @@ pub fn parse_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, ParseError> {
         return Ok(None);
     }
 
-    // TODO - use return_if_none! here after finishing parse_variable_header function
-    let variable_header = parse_variable_header(&packet_type, &mut bytes)?;
-
-    println!("variable_header: {:?}", variable_header);
+    // TODO - use return_if_none! here after finishing decode_packet function
+    let packet = decode_packet(&packet_type, &mut bytes)?;
 
     let cursor_pos = bytes.position() as usize;
     let bytes = bytes.into_inner();
 
-    let rest = bytes.split_to(cursor_pos);
-    let packet = Packet::new(packet_type, &rest);
+    let _rest = bytes.split_to(cursor_pos);
 
-    Ok(Some(packet))
+    Ok(packet)
 }
