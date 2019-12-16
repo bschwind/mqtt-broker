@@ -339,9 +339,8 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
     let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
 
     let client_id = read_string!(bytes);
-    let mut will = None;
 
-    if has_will {
+    let will = if has_will {
         let mut will_delay_interval = None;
         let mut payload_format_indicator = None;
         let mut message_expiry_interval = None;
@@ -366,7 +365,7 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
         let topic = read_string!(bytes);
         let payload = read_binary_data!(bytes);
 
-        will = Some(FinalWill {
+        Some(FinalWill {
             topic,
             payload,
             qos: will_qos,
@@ -378,8 +377,10 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
             response_topic,
             correlation_data,
             user_properties,
-        });
-    }
+        })
+    } else {
+        None
+    };
 
     let mut user_name = None;
     let mut password = None;
