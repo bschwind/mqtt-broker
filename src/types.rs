@@ -102,7 +102,7 @@ pub mod properties {
     #[derive(Debug)]
     pub struct ContentType(pub String);
     #[derive(Debug)]
-    pub struct RepsonseTopic(pub String);
+    pub struct ResponseTopic(pub String);
     #[derive(Debug)]
     pub struct CorrelationData(pub Vec<u8>);
     #[derive(Debug)]
@@ -155,7 +155,7 @@ pub mod properties {
         PayloadFormatIndicator(PayloadFormatIndicator),
         MessageExpiryInterval(MessageExpiryInterval),
         ContentType(ContentType),
-        RepsonseTopic(RepsonseTopic),
+        ResponseTopic(ResponseTopic),
         CorrelationData(CorrelationData),
         SubscriptionIdentifier(SubscriptionIdentifier),
         SessionExpiryInterval(SessionExpiryInterval),
@@ -397,7 +397,7 @@ pub struct FinalWill {
     pub payload_format_indicator: Option<PayloadFormatIndicator>,
     pub message_expiry_interval: Option<MessageExpiryInterval>,
     pub content_type: Option<ContentType>,
-    pub response_topic: Option<RepsonseTopic>,
+    pub response_topic: Option<ResponseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
 }
@@ -466,6 +466,11 @@ pub struct ConnectAckPacket {
 
 #[derive(Debug)]
 pub struct PublishPacket {
+    // Fixed header
+    pub is_duplicate: bool,
+    pub qos: QoS,
+    pub retain: bool,
+
     // Variable header
     pub topic_name: String,
     pub packet_id: Option<u16>,
@@ -474,7 +479,7 @@ pub struct PublishPacket {
     pub payload_format_indicator: Option<PayloadFormatIndicator>, // TODO(bschwind) - Is this truly optional?
     pub message_expiry_interval: Option<MessageExpiryInterval>,
     pub topic_alias: Option<TopicAlias>,
-    pub response_topic: Option<RepsonseTopic>,
+    pub response_topic: Option<ResponseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
     pub subscription_identifier: Option<SubscriptionIdentifier>,

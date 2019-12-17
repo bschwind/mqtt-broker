@@ -1,6 +1,6 @@
 use crate::types::{
     properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, DisconnectPacket,
-    DisconnectReason, FinalWill, Packet, PacketType, QoS,
+    DisconnectReason, FinalWill, Packet, PacketType, PublishPacket, QoS,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -136,6 +136,17 @@ fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8
     Ok(Some(bytes.get_ref()[position..(position + data_size_bytes)].into()))
 }
 
+fn decode_binary_data_with_size(
+    bytes: &mut Cursor<&mut BytesMut>,
+    size: usize,
+) -> Result<Option<Vec<u8>>, DecodeError> {
+    require_length!(bytes, size);
+
+    let position = bytes.position() as usize;
+
+    Ok(Some(bytes.get_ref()[position..(position + size)].into()))
+}
+
 fn decode_property(
     property_id: u32,
     bytes: &mut Cursor<&mut BytesMut>,
@@ -157,7 +168,7 @@ fn decode_property(
         },
         8 => {
             let response_topic = read_string!(bytes);
-            Ok(Some(Property::RepsonseTopic(RepsonseTopic(response_topic))))
+            Ok(Some(Property::ResponseTopic(ResponseTopic(response_topic))))
         },
         9 => {
             let correlation_data = read_binary_data!(bytes);
@@ -358,7 +369,7 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
                 Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
                 Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
                 Property::ContentType(p) => content_type = Some(p),
-                Property::RepsonseTopic(p) => response_topic = Some(p),
+                Property::ResponseTopic(p) => response_topic = Some(p),
                 Property::CorrelationData(p) => correlation_data = Some(p),
                 Property::UserProperty(p) => user_properties.push(p),
                 _ => {}, // Invalid property for packet
@@ -494,6 +505,78 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     Ok(Some(Packet::ConnectAck(packet)))
 }
 
+fn decode_publish(
+    bytes: &mut Cursor<&mut BytesMut>,
+    first_byte: u8,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let is_duplicate = (first_byte & 0b0000_1000) == 0b0000_1000;
+    let qos_val = (first_byte & 0b0000_0110) >> 1;
+    let qos = QoS::try_from(qos_val)?;
+    let retain = (first_byte & 0b0000_0001) == 0b0000_0001;
+
+    // Variable header start
+    let start_cursor_pos = bytes.position();
+
+    let topic_name = read_string!(bytes);
+    let packet_id = match qos {
+        QoS::AtMostOnce => None,
+        QoS::AtLeastOnce | QoS::ExactlyOnce => Some(read_u16!(bytes)),
+    };
+
+    let mut payload_format_indicator = None;
+    let mut message_expiry_interval = None;
+    let mut topic_alias = None;
+    let mut response_topic = None;
+    let mut correlation_data = None;
+    let mut user_properties = vec![];
+    let mut subscription_identifier = None;
+    let mut content_type = None;
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
+            Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
+            Property::TopicAlias(p) => topic_alias = Some(p),
+            Property::ResponseTopic(p) => response_topic = Some(p),
+            Property::CorrelationData(p) => correlation_data = Some(p),
+            Property::UserProperty(p) => user_properties.push(p),
+            Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
+            Property::ContentType(p) => content_type = Some(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    let end_cursor_pos = bytes.position();
+    let variable_header_size = end_cursor_pos - start_cursor_pos;
+    // Variable header end
+
+    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    let payload = return_if_none!(decode_binary_data_with_size(bytes, payload_size as usize)?);
+
+    let packet = PublishPacket {
+        is_duplicate,
+        qos,
+        retain,
+
+        topic_name,
+        packet_id,
+
+        payload_format_indicator,
+        message_expiry_interval,
+        topic_alias,
+        response_topic,
+        correlation_data,
+        user_properties,
+        subscription_identifier,
+        content_type,
+
+        payload,
+    };
+
+    Ok(Some(Packet::Publish(packet)))
+}
+
 fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
@@ -533,10 +616,12 @@ fn decode_packet(
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    first_byte: u8,
 ) -> Result<Option<Packet>, DecodeError> {
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
+        PacketType::Publish => decode_publish(bytes, first_byte, remaining_packet_length),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
@@ -559,7 +644,7 @@ pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> 
     }
 
     // TODO - use return_if_none! here after finishing decode_packet function
-    let packet = decode_packet(&packet_type, &mut bytes, remaining_packet_length)?;
+    let packet = decode_packet(&packet_type, &mut bytes, remaining_packet_length, first_byte)?;
 
     let cursor_pos = bytes.position() as usize;
     let bytes = bytes.into_inner();
