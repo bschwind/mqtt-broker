@@ -285,10 +285,41 @@ pub enum PublishReceivedReason {
     PayloadFormatInvalid,
 }
 
+impl TryFrom<u8> for PublishReceivedReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(PublishReceivedReason::Success),
+            16 => Ok(PublishReceivedReason::NoMatchingSubscribers),
+            128 => Ok(PublishReceivedReason::UnspecifiedError),
+            131 => Ok(PublishReceivedReason::ImplementationSpecificError),
+            135 => Ok(PublishReceivedReason::NotAuthorized),
+            144 => Ok(PublishReceivedReason::TopicNameInvalid),
+            145 => Ok(PublishReceivedReason::PacketIdentifierInUse),
+            151 => Ok(PublishReceivedReason::QuotaExceeded),
+            153 => Ok(PublishReceivedReason::PayloadFormatInvalid),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum PublishReleaseReason {
     Success,
     PacketIdentifierNotFound,
+}
+
+impl TryFrom<u8> for PublishReleaseReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(PublishReleaseReason::Success),
+            146 => Ok(PublishReleaseReason::PacketIdentifierNotFound),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -522,7 +553,7 @@ pub struct PublishAckPacket {
 #[derive(Debug)]
 pub struct PublishReceivedPacket {
     // Variable header
-    pub packet_id: Option<u16>,
+    pub packet_id: u16,
     pub reason_code: PublishReceivedReason,
 
     // Properties

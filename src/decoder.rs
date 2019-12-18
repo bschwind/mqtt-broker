@@ -1,7 +1,8 @@
 use crate::types::{
     properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, DisconnectPacket,
     DisconnectReason, FinalWill, Packet, PacketType, PublishAckPacket, PublishAckReason,
-    PublishPacket, QoS,
+    PublishPacket, PublishReceivedPacket, PublishReceivedReason, PublishReleasePacket,
+    PublishReleaseReason, QoS,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -578,7 +579,10 @@ fn decode_publish(
     Ok(Some(Packet::Publish(packet)))
 }
 
-fn decode_publish_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, DecodeError> {
+fn decode_publish_ack(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
     let reason_code_byte = read_u8!(bytes);
     let reason_code = PublishAckReason::try_from(reason_code_byte)?;
@@ -586,17 +590,71 @@ fn decode_publish_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::ReasonString(p) => reason_string = Some(p),
-            Property::UserProperty(p) => user_properties.push(p),
-            _ => {}, // Invalid property for packet
-        }
-    })?);
+    if remaining_packet_length >= 4 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
 
     let packet = PublishAckPacket { packet_id, reason_code, reason_string, user_properties };
 
     Ok(Some(Packet::PublishAck(packet)))
+}
+
+fn decode_publish_received(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let packet_id = read_u16!(bytes);
+    let reason_code_byte = read_u8!(bytes);
+    let reason_code = PublishReceivedReason::try_from(reason_code_byte)?;
+
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+
+    if remaining_packet_length >= 4 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
+
+    let packet = PublishReceivedPacket { packet_id, reason_code, reason_string, user_properties };
+
+    Ok(Some(Packet::PublishReceived(packet)))
+}
+
+fn decode_publish_release(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let packet_id = read_u16!(bytes);
+    let reason_code_byte = read_u8!(bytes);
+    let reason_code = PublishReleaseReason::try_from(reason_code_byte)?;
+
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+
+    if remaining_packet_length >= 4 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
+
+    let packet = PublishReleasePacket { packet_id, reason_code, reason_string, user_properties };
+
+    Ok(Some(Packet::PublishRelease(packet)))
 }
 
 fn decode_disconnect(
@@ -644,7 +702,9 @@ fn decode_packet(
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
         PacketType::Publish => decode_publish(bytes, first_byte, remaining_packet_length),
-        PacketType::PublishAck => decode_publish_ack(bytes),
+        PacketType::PublishAck => decode_publish_ack(bytes, remaining_packet_length),
+        PacketType::PublishReceived => decode_publish_received(bytes, remaining_packet_length),
+        PacketType::PublishRelease => decode_publish_release(bytes, remaining_packet_length),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
