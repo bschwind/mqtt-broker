@@ -253,6 +253,25 @@ pub enum PublishAckReason {
     PayloadFormatInvalid,
 }
 
+impl TryFrom<u8> for PublishAckReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(PublishAckReason::Success),
+            16 => Ok(PublishAckReason::NoMatchingSubscribers),
+            128 => Ok(PublishAckReason::UnspecifiedError),
+            131 => Ok(PublishAckReason::ImplementationSpecificError),
+            135 => Ok(PublishAckReason::NotAuthorized),
+            144 => Ok(PublishAckReason::TopicNameInvalid),
+            145 => Ok(PublishAckReason::PacketIdentifierInUse),
+            151 => Ok(PublishAckReason::QuotaExceeded),
+            153 => Ok(PublishAckReason::PayloadFormatInvalid),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum PublishReceivedReason {
     Success,
