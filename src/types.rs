@@ -328,6 +328,18 @@ pub enum PublishCompleteReason {
     PacketIdentifierNotFound,
 }
 
+impl TryFrom<u8> for PublishCompleteReason {
+    type Error = DecodeError;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(PublishCompleteReason::Success),
+            146 => Ok(PublishCompleteReason::PacketIdentifierNotFound),
+            _ => Err(DecodeError::InvalidConnectReason),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum SubscribeAckReason {
     GrantedQoSZero,
