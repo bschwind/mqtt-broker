@@ -65,11 +65,12 @@ impl TryFrom<u8> for PacketType {
     }
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 pub enum QoS {
-    AtMostOnce,  // QoS 0
-    AtLeastOnce, // QoS 1
-    ExactlyOnce, // QoS 2
+    AtMostOnce = 0,  // QoS 0
+    AtLeastOnce = 1, // QoS 1
+    ExactlyOnce = 2, // QoS 2
 }
 
 impl TryFrom<u8> for QoS {
@@ -687,4 +688,62 @@ pub enum Packet {
     PingResponse,
     Disconnect(DisconnectPacket),
     Authenticate(AuthenticatePacket),
+}
+
+impl Packet {
+    pub fn to_byte(&self) -> u8 {
+        match self {
+            Packet::Connect(_) => 1,
+            Packet::ConnectAck(_) => 2,
+            Packet::Publish(_) => 3,
+            Packet::PublishAck(_) => 4,
+            Packet::PublishReceived(_) => 5,
+            Packet::PublishRelease(_) => 6,
+            Packet::PublishComplete(_) => 7,
+            Packet::Subscribe(_) => 8,
+            Packet::SubscribeAck(_) => 9,
+            Packet::Unsubscribe(_) => 10,
+            Packet::UnsubscribeAck(_) => 11,
+            Packet::PingRequest => 12,
+            Packet::PingResponse => 13,
+            Packet::Disconnect(_) => 14,
+            Packet::Authenticate(_) => 15,
+        }
+    }
+
+    pub fn fixed_header_flags(&self) -> u8 {
+        match self {
+            Packet::Connect(_)
+            | Packet::ConnectAck(_)
+            | Packet::PublishAck(_)
+            | Packet::PublishReceived(_)
+            | Packet::PublishComplete(_)
+            | Packet::SubscribeAck(_)
+            | Packet::UnsubscribeAck(_)
+            | Packet::PingRequest
+            | Packet::PingResponse
+            | Packet::Disconnect(_)
+            | Packet::Authenticate(_) => 0b0000_0000,
+            Packet::PublishRelease(_) | Packet::Subscribe(_) | Packet::Unsubscribe(_) => {
+                0b0000_0010
+            },
+            Packet::Publish(publish_packet) => {
+                let mut flags: u8 = 0;
+
+                if publish_packet.is_duplicate {
+                    flags |= 0b0000_1000;
+                }
+
+                let qos = publish_packet.qos as u8;
+                let qos_bits = 0b0000_0110 & (qos << 1);
+                flags |= qos_bits;
+
+                if publish_packet.retain {
+                    flags |= 0b0000_0001;
+                }
+
+                flags
+            },
+        }
+    }
 }

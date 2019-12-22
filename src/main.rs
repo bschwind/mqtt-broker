@@ -1,6 +1,6 @@
-use crate::types::{DecodeError, Packet};
-use bytes::BytesMut;
-use futures::StreamExt;
+use crate::types::{ConnectAckPacket, ConnectReason, DecodeError, Packet};
+use bytes::{BufMut, BytesMut};
+use futures::{SinkExt, StreamExt};
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
@@ -31,9 +31,10 @@ impl Decoder for MqttCodec {
 
 impl Encoder for MqttCodec {
     type Error = DecodeError;
-    type Item = ();
+    type Item = Packet;
 
-    fn encode(&mut self, _data: Self::Item, _bytes: &mut BytesMut) -> Result<(), DecodeError> {
+    fn encode(&mut self, packet: Self::Item, bytes: &mut BytesMut) -> Result<(), DecodeError> {
+        encoder::encode_mqtt(&packet, bytes)?;
         Ok(())
     }
 }
@@ -45,7 +46,38 @@ async fn client_handler(stream: TcpStream) {
 
     while let Some(frame) = framed_sock.next().await {
         match frame {
-            Ok(frame) => println!("Got a frame: {:#?}", frame),
+            Ok(frame) => {
+                println!("Got a frame: {:#?}", frame);
+                let connect_ack = ConnectAckPacket {
+                    // Variable header
+                    session_present: false,
+                    reason: ConnectReason::Success,
+
+                    // Properties
+                    session_expiry_interval: None,
+                    receive_maximum: None,
+                    maximum_qos: None,
+                    retain_available: None,
+                    maximum_packet_size: None,
+                    assigned_client_identifier: None,
+                    topic_alias_maximum: None,
+                    reason_string: None,
+                    user_properties: vec![],
+                    wildcard_subscription_available: None,
+                    subscription_identifiers_available: None,
+                    shared_subscription_available: None,
+                    server_keep_alive: None,
+                    response_information: None,
+                    server_reference: None,
+                    authentication_method: None,
+                    authentication_data: None,
+                };
+
+                framed_sock
+                    .send(Packet::ConnectAck(connect_ack))
+                    .await
+                    .expect("Couldn't forward packet to framed socket");
+            },
             Err(err) => {
                 println!("Error while reading frame: {:?}", err);
                 break;

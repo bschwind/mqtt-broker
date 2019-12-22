@@ -1,4 +1,7 @@
-fn encode_variable_int(value: u32, buf: &mut [u8]) -> usize {
+use crate::types::{ConnectAckPacket, DecodeError, Packet};
+use bytes::{BufMut, BytesMut};
+
+fn encode_variable_int(value: u32, bytes: &mut BytesMut) -> usize {
     let mut x = value;
     let mut byte_counter = 0;
 
@@ -10,7 +13,7 @@ fn encode_variable_int(value: u32, buf: &mut [u8]) -> usize {
             encoded_byte |= 128;
         }
 
-        buf[byte_counter] = encoded_byte;
+        bytes.put_u8(encoded_byte);
 
         byte_counter += 1;
 
@@ -20,4 +23,45 @@ fn encode_variable_int(value: u32, buf: &mut [u8]) -> usize {
     }
 
     byte_counter
+}
+
+fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) -> Result<(), DecodeError> {
+    // TODO - calculate remaining length
+    let remaining_length = 3;
+
+    encode_variable_int(remaining_length, bytes);
+
+    let mut connect_ack_flags = 0b0000_0000;
+    if packet.session_present {
+        connect_ack_flags |= 0b0000_0001;
+    }
+
+    bytes.put_u8(connect_ack_flags);
+
+    // TODO - replace with actual reason code
+    let reason_code = 0;
+    bytes.put_u8(reason_code);
+
+    // TODO - replace with actual property length
+    let property_length = 0;
+    encode_variable_int(property_length, bytes);
+
+    Ok(())
+}
+
+pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) -> Result<(), DecodeError> {
+    // TODO - reserve the exact amount
+    // bytes.reserve(packet_size);
+    let first_byte = packet.to_byte();
+    let mut first_byte_val = (first_byte << 4) & 0b1111_0000;
+    first_byte_val |= packet.fixed_header_flags();
+
+    bytes.put_u8(first_byte_val);
+
+    match packet {
+        Packet::ConnectAck(p) => encode_connect_ack(p, bytes)?,
+        _ => {},
+    }
+
+    Ok(())
 }
