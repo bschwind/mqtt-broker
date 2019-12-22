@@ -8,6 +8,7 @@ pub enum DecodeError {
     PacketTooLarge,
     InvalidUtf8,
     InvalidQoS,
+    InvalidRetainHandling,
     InvalidConnectReason,
     InvalidDisconnectReason,
     InvalidPublishAckReason,
@@ -53,11 +54,12 @@ pub enum QoS {
     ExactlyOnce = 2, // QoS 2
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum RetainHandling {
-    SendAtSubscribeTime,
-    SendAtSubscribeTimeIfNonexistent,
-    DoNotSend,
+    SendAtSubscribeTime = 0,
+    SendAtSubscribeTimeIfNonexistent = 1,
+    DoNotSend = 2,
 }
 
 pub mod properties {

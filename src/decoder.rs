@@ -2,7 +2,8 @@ use crate::types::{
     properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, DisconnectPacket,
     DisconnectReason, FinalWill, Packet, PacketType, PublishAckPacket, PublishAckReason,
     PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
-    PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS,
+    PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling,
+    SubscribePacket, SubscriptionTopic,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -688,6 +689,75 @@ fn decode_publish_complete(
     Ok(Some(Packet::PublishComplete(packet)))
 }
 
+fn decode_subscribe(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let start_cursor_pos = bytes.position();
+
+    let packet_id = read_u16!(bytes);
+
+    let mut subscription_identifier = None;
+    let mut user_properties = vec![];
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
+            Property::UserProperty(p) => user_properties.push(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    let variable_header_size = bytes.position() - start_cursor_pos;
+    let payload_size = remaining_packet_length as u64 - variable_header_size;
+
+    let mut subscription_topics = vec![];
+    let mut bytes_read = 0;
+
+    loop {
+        if bytes_read >= payload_size {
+            break;
+        }
+
+        let start_cursor_pos = bytes.position();
+
+        let topic = read_string!(bytes);
+        let options_byte = read_u8!(bytes);
+
+        let maximum_qos_val = 0b0000_0011 & options_byte;
+        let maximum_qos = QoS::try_from(maximum_qos_val).map_err(|_| DecodeError::InvalidQoS)?;
+
+        let retain_handling_val = (0b0011_0000 & options_byte) >> 4;
+        let retain_handling = RetainHandling::try_from(retain_handling_val)
+            .map_err(|_| DecodeError::InvalidRetainHandling)?;
+
+        let retain_as_published = (0b0000_1000 & options_byte) == 0b0000_1000;
+        let no_local = (0b0000_0100 & options_byte) == 0b0000_0100;
+
+        let subscription_topic = SubscriptionTopic {
+            topic,
+            maximum_qos,
+            no_local,
+            retain_as_published,
+            retain_handling,
+        };
+
+        subscription_topics.push(subscription_topic);
+
+        let end_cursor_pos = bytes.position();
+        bytes_read += end_cursor_pos - start_cursor_pos;
+    }
+
+    let packet = SubscribePacket {
+        packet_id,
+        subscription_identifier,
+        user_properties,
+        subscription_topics,
+    };
+
+    Ok(Some(Packet::Subscribe(packet)))
+}
+
 fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
@@ -738,6 +808,7 @@ fn decode_packet(
         PacketType::PublishReceived => decode_publish_received(bytes, remaining_packet_length),
         PacketType::PublishRelease => decode_publish_release(bytes, remaining_packet_length),
         PacketType::PublishComplete => decode_publish_complete(bytes, remaining_packet_length),
+        PacketType::Subscribe => decode_subscribe(bytes, remaining_packet_length),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }

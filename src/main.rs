@@ -73,10 +73,12 @@ async fn client_handler(stream: TcpStream) {
                     authentication_data: None,
                 };
 
-                framed_sock
-                    .send(Packet::ConnectAck(connect_ack))
-                    .await
-                    .expect("Couldn't forward packet to framed socket");
+                if let Packet::Connect(_) = frame {
+                    framed_sock
+                        .send(Packet::ConnectAck(connect_ack))
+                        .await
+                        .expect("Couldn't forward packet to framed socket");
+                }
             },
             Err(err) => {
                 println!("Error while reading frame: {:?}", err);
