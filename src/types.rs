@@ -1,5 +1,5 @@
+use num_enum::TryFromPrimitive;
 use properties::*;
-use std::convert::TryFrom;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -10,6 +10,10 @@ pub enum DecodeError {
     InvalidQoS,
     InvalidConnectReason,
     InvalidDisconnectReason,
+    InvalidPublishAckReason,
+    InvalidPublishReceivedReason,
+    InvalidPublishReleaseReason,
+    InvalidPublishCompleteReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -21,69 +25,32 @@ impl From<std::io::Error> for DecodeError {
     }
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum PacketType {
-    Connect,
-    ConnectAck,
-    Publish,
-    PublishAck,
-    PublishReceived,
-    PublishRelease,
-    PublishComplete,
-    Subscribe,
-    SubscribeAck,
-    Unsubscribe,
-    UnsubscribeAck,
-    PingRequest,
-    PingResponse,
-    Disconnect,
-    Authenticate,
-}
-
-impl TryFrom<u8> for PacketType {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            1 => Ok(PacketType::Connect),
-            2 => Ok(PacketType::ConnectAck),
-            3 => Ok(PacketType::Publish),
-            4 => Ok(PacketType::PublishAck),
-            5 => Ok(PacketType::PublishReceived),
-            6 => Ok(PacketType::PublishRelease),
-            7 => Ok(PacketType::PublishComplete),
-            8 => Ok(PacketType::Subscribe),
-            9 => Ok(PacketType::SubscribeAck),
-            10 => Ok(PacketType::Unsubscribe),
-            11 => Ok(PacketType::UnsubscribeAck),
-            12 => Ok(PacketType::PingRequest),
-            13 => Ok(PacketType::PingResponse),
-            14 => Ok(PacketType::Disconnect),
-            15 => Ok(PacketType::Authenticate),
-            _ => Err(DecodeError::InvalidPacketType),
-        }
-    }
+    Connect = 1,
+    ConnectAck = 2,
+    Publish = 3,
+    PublishAck = 4,
+    PublishReceived = 5,
+    PublishRelease = 6,
+    PublishComplete = 7,
+    Subscribe = 8,
+    SubscribeAck = 9,
+    Unsubscribe = 10,
+    UnsubscribeAck = 11,
+    PingRequest = 12,
+    PingResponse = 13,
+    Disconnect = 14,
+    Authenticate = 15,
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive)]
 pub enum QoS {
     AtMostOnce = 0,  // QoS 0
     AtLeastOnce = 1, // QoS 1
     ExactlyOnce = 2, // QoS 2
-}
-
-impl TryFrom<u8> for QoS {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(QoS::AtMostOnce),
-            1 => Ok(QoS::AtLeastOnce),
-            2 => Ok(QoS::ExactlyOnce),
-            _ => Err(DecodeError::InvalidQoS),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -183,162 +150,73 @@ pub mod properties {
     }
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum ConnectReason {
-    Success,
-    UnspecifiedError,
-    MalformedPacket,
-    ProtocolError,
-    ImplementationSpecificError,
-    UnsupportedProtocolVersion,
-    ClientIdentifierNotValid,
-    BadUserNameOrPassword,
-    NotAuthorized,
-    ServerUnavailable,
-    ServerBusy,
-    Banned,
-    BadAuthenticationMethod,
-    TopicNameInvalid,
-    PacketTooLarge,
-    QuotaExceeded,
-    PayloadFormatInvalid,
-    RetainNotSupported,
-    QosNotSupported,
-    UseAnotherServer,
-    ServerMoved,
-    ConnectionRateExceeded,
+    Success = 0,
+    UnspecifiedError = 128,
+    MalformedPacket = 129,
+    ProtocolError = 130,
+    ImplementationSpecificError = 131,
+    UnsupportedProtocolVersion = 132,
+    ClientIdentifierNotValid = 133,
+    BadUserNameOrPassword = 134,
+    NotAuthorized = 135,
+    ServerUnavailable = 136,
+    ServerBusy = 137,
+    Banned = 138,
+    BadAuthenticationMethod = 140,
+    TopicNameInvalid = 144,
+    PacketTooLarge = 149,
+    QuotaExceeded = 151,
+    PayloadFormatInvalid = 153,
+    RetainNotSupported = 154,
+    QosNotSupported = 155,
+    UseAnotherServer = 156,
+    ServerMoved = 157,
+    ConnectionRateExceeded = 159,
 }
 
-impl TryFrom<u8> for ConnectReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(ConnectReason::Success),
-            128 => Ok(ConnectReason::UnspecifiedError),
-            129 => Ok(ConnectReason::MalformedPacket),
-            130 => Ok(ConnectReason::ProtocolError),
-            131 => Ok(ConnectReason::ImplementationSpecificError),
-            132 => Ok(ConnectReason::UnsupportedProtocolVersion),
-            133 => Ok(ConnectReason::ClientIdentifierNotValid),
-            134 => Ok(ConnectReason::BadUserNameOrPassword),
-            135 => Ok(ConnectReason::NotAuthorized),
-            136 => Ok(ConnectReason::ServerUnavailable),
-            137 => Ok(ConnectReason::ServerBusy),
-            138 => Ok(ConnectReason::Banned),
-            140 => Ok(ConnectReason::BadAuthenticationMethod),
-            144 => Ok(ConnectReason::TopicNameInvalid),
-            149 => Ok(ConnectReason::PacketTooLarge),
-            151 => Ok(ConnectReason::QuotaExceeded),
-            153 => Ok(ConnectReason::PayloadFormatInvalid),
-            154 => Ok(ConnectReason::RetainNotSupported),
-            155 => Ok(ConnectReason::QosNotSupported),
-            156 => Ok(ConnectReason::UseAnotherServer),
-            157 => Ok(ConnectReason::ServerMoved),
-            159 => Ok(ConnectReason::ConnectionRateExceeded),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum PublishAckReason {
-    Success,
-    NoMatchingSubscribers,
-    UnspecifiedError,
-    ImplementationSpecificError,
-    NotAuthorized,
-    TopicNameInvalid,
-    PacketIdentifierInUse,
-    QuotaExceeded,
-    PayloadFormatInvalid,
+    Success = 0,
+    NoMatchingSubscribers = 16,
+    UnspecifiedError = 128,
+    ImplementationSpecificError = 131,
+    NotAuthorized = 135,
+    TopicNameInvalid = 144,
+    PacketIdentifierInUse = 145,
+    QuotaExceeded = 151,
+    PayloadFormatInvalid = 153,
 }
 
-impl TryFrom<u8> for PublishAckReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(PublishAckReason::Success),
-            16 => Ok(PublishAckReason::NoMatchingSubscribers),
-            128 => Ok(PublishAckReason::UnspecifiedError),
-            131 => Ok(PublishAckReason::ImplementationSpecificError),
-            135 => Ok(PublishAckReason::NotAuthorized),
-            144 => Ok(PublishAckReason::TopicNameInvalid),
-            145 => Ok(PublishAckReason::PacketIdentifierInUse),
-            151 => Ok(PublishAckReason::QuotaExceeded),
-            153 => Ok(PublishAckReason::PayloadFormatInvalid),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum PublishReceivedReason {
-    Success,
-    NoMatchingSubscribers,
-    UnspecifiedError,
-    ImplementationSpecificError,
-    NotAuthorized,
-    TopicNameInvalid,
-    PacketIdentifierInUse,
-    QuotaExceeded,
-    PayloadFormatInvalid,
+    Success = 0,
+    NoMatchingSubscribers = 16,
+    UnspecifiedError = 128,
+    ImplementationSpecificError = 131,
+    NotAuthorized = 135,
+    TopicNameInvalid = 144,
+    PacketIdentifierInUse = 145,
+    QuotaExceeded = 151,
+    PayloadFormatInvalid = 153,
 }
 
-impl TryFrom<u8> for PublishReceivedReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(PublishReceivedReason::Success),
-            16 => Ok(PublishReceivedReason::NoMatchingSubscribers),
-            128 => Ok(PublishReceivedReason::UnspecifiedError),
-            131 => Ok(PublishReceivedReason::ImplementationSpecificError),
-            135 => Ok(PublishReceivedReason::NotAuthorized),
-            144 => Ok(PublishReceivedReason::TopicNameInvalid),
-            145 => Ok(PublishReceivedReason::PacketIdentifierInUse),
-            151 => Ok(PublishReceivedReason::QuotaExceeded),
-            153 => Ok(PublishReceivedReason::PayloadFormatInvalid),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum PublishReleaseReason {
-    Success,
-    PacketIdentifierNotFound,
+    Success = 0,
+    PacketIdentifierNotFound = 146,
 }
 
-impl TryFrom<u8> for PublishReleaseReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(PublishReleaseReason::Success),
-            146 => Ok(PublishReleaseReason::PacketIdentifierNotFound),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum PublishCompleteReason {
-    Success,
-    PacketIdentifierNotFound,
-}
-
-impl TryFrom<u8> for PublishCompleteReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(PublishCompleteReason::Success),
-            146 => Ok(PublishCompleteReason::PacketIdentifierNotFound),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
+    Success = 0,
+    PacketIdentifierNotFound = 146,
 }
 
 #[derive(Debug)]
@@ -368,76 +246,38 @@ pub enum UnsubscribeAckReason {
     PacketIdentifierInUse,
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum DisconnectReason {
-    NormalDisconnection,
-    DisconnectWithWillMessage,
-    UnspecifiedError,
-    MalformedPacket,
-    ProtocolError,
-    ImplementationSpecificError,
-    NotAuthorized,
-    ServerBusy,
-    ServerShuttingDown,
-    KeepAliveTimeout,
-    SessionTakenOver,
-    TopicFilterInvalid,
-    TopicNameInvalid,
-    ReceiveMaximumExceeded,
-    TopicAliasInvalid,
-    PacketTooLarge,
-    MessageRateTooHigh,
-    QuotaExceeded,
-    AdministrativeAction,
-    PayloadFormatInvalid,
-    RetainNotSupported,
-    QosNotSupported,
-    UseAnotherServer,
-    ServerMoved,
-    SharedSubscriptionNotAvailable,
-    ConnectionRateExceeded,
-    MaximumConnectTime,
-    SubscriptionIdentifiersNotAvailable,
-    WildcardSubscriptionsNotAvailable,
-}
-
-impl TryFrom<u8> for DisconnectReason {
-    type Error = DecodeError;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(DisconnectReason::NormalDisconnection),
-            4 => Ok(DisconnectReason::DisconnectWithWillMessage),
-            128 => Ok(DisconnectReason::UnspecifiedError),
-            129 => Ok(DisconnectReason::MalformedPacket),
-            130 => Ok(DisconnectReason::ProtocolError),
-            131 => Ok(DisconnectReason::ImplementationSpecificError),
-            135 => Ok(DisconnectReason::NotAuthorized),
-            137 => Ok(DisconnectReason::ServerBusy),
-            139 => Ok(DisconnectReason::ServerShuttingDown),
-            141 => Ok(DisconnectReason::KeepAliveTimeout),
-            142 => Ok(DisconnectReason::SessionTakenOver),
-            143 => Ok(DisconnectReason::TopicFilterInvalid),
-            144 => Ok(DisconnectReason::TopicNameInvalid),
-            147 => Ok(DisconnectReason::ReceiveMaximumExceeded),
-            148 => Ok(DisconnectReason::TopicAliasInvalid),
-            149 => Ok(DisconnectReason::PacketTooLarge),
-            150 => Ok(DisconnectReason::MessageRateTooHigh),
-            151 => Ok(DisconnectReason::QuotaExceeded),
-            152 => Ok(DisconnectReason::AdministrativeAction),
-            153 => Ok(DisconnectReason::PayloadFormatInvalid),
-            154 => Ok(DisconnectReason::RetainNotSupported),
-            155 => Ok(DisconnectReason::QosNotSupported),
-            156 => Ok(DisconnectReason::UseAnotherServer),
-            157 => Ok(DisconnectReason::ServerMoved),
-            158 => Ok(DisconnectReason::SharedSubscriptionNotAvailable),
-            159 => Ok(DisconnectReason::ConnectionRateExceeded),
-            160 => Ok(DisconnectReason::MaximumConnectTime),
-            161 => Ok(DisconnectReason::SubscriptionIdentifiersNotAvailable),
-            162 => Ok(DisconnectReason::WildcardSubscriptionsNotAvailable),
-            _ => Err(DecodeError::InvalidConnectReason),
-        }
-    }
+    NormalDisconnection = 0,
+    DisconnectWithWillMessage = 4,
+    UnspecifiedError = 128,
+    MalformedPacket = 129,
+    ProtocolError = 130,
+    ImplementationSpecificError = 131,
+    NotAuthorized = 135,
+    ServerBusy = 137,
+    ServerShuttingDown = 139,
+    KeepAliveTimeout = 141,
+    SessionTakenOver = 142,
+    TopicFilterInvalid = 143,
+    TopicNameInvalid = 144,
+    ReceiveMaximumExceeded = 147,
+    TopicAliasInvalid = 148,
+    PacketTooLarge = 149,
+    MessageRateTooHigh = 150,
+    QuotaExceeded = 151,
+    AdministrativeAction = 152,
+    PayloadFormatInvalid = 153,
+    RetainNotSupported = 154,
+    QosNotSupported = 155,
+    UseAnotherServer = 156,
+    ServerMoved = 157,
+    SharedSubscriptionNotAvailable = 158,
+    ConnectionRateExceeded = 159,
+    MaximumConnectTime = 160,
+    SubscriptionIdentifiersNotAvailable = 161,
+    WildcardSubscriptionsNotAvailable = 162,
 }
 
 #[derive(Debug)]

@@ -248,7 +248,7 @@ fn decode_property(
         },
         36 => {
             let qos_byte = read_u8!(bytes);
-            let qos = QoS::try_from(qos_byte)?;
+            let qos = QoS::try_from(qos_byte).map_err(|_| DecodeError::InvalidQoS)?;
 
             Ok(Some(Property::MaximumQos(MaximumQos(qos))))
         },
@@ -349,7 +349,7 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
     let clean_start = 0b0000_0010 & connect_flags == 0b0000_0010;
     let has_will = 0b0000_0100 & connect_flags == 0b0000_0100;
     let will_qos_val = (0b0001_1000 & connect_flags) >> 3;
-    let will_qos = QoS::try_from(will_qos_val)?;
+    let will_qos = QoS::try_from(will_qos_val).map_err(|_| DecodeError::InvalidQoS)?;
     let retain_will = 0b0010_0000 & connect_flags == 0b0010_0000;
     let has_password = 0b0100_0000 & connect_flags == 0b0100_0000;
     let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
@@ -437,7 +437,8 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     let session_present = (flags & 0b0000_0001) == 0b0000_0001;
 
     let reason_code_byte = read_u8!(bytes);
-    let reason = ConnectReason::try_from(reason_code_byte)?;
+    let reason =
+        ConnectReason::try_from(reason_code_byte).map_err(|_| DecodeError::InvalidConnectReason)?;
 
     let mut session_expiry_interval = None;
     let mut receive_maximum = None;
@@ -514,7 +515,7 @@ fn decode_publish(
 ) -> Result<Option<Packet>, DecodeError> {
     let is_duplicate = (first_byte & 0b0000_1000) == 0b0000_1000;
     let qos_val = (first_byte & 0b0000_0110) >> 1;
-    let qos = QoS::try_from(qos_val)?;
+    let qos = QoS::try_from(qos_val).map_err(|_| DecodeError::InvalidQoS)?;
     let retain = (first_byte & 0b0000_0001) == 0b0000_0001;
 
     // Variable header start
@@ -585,7 +586,8 @@ fn decode_publish_ack(
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
     let reason_code_byte = read_u8!(bytes);
-    let reason_code = PublishAckReason::try_from(reason_code_byte)?;
+    let reason_code = PublishAckReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidPublishAckReason)?;
 
     let mut reason_string = None;
     let mut user_properties = vec![];
@@ -611,7 +613,8 @@ fn decode_publish_received(
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
     let reason_code_byte = read_u8!(bytes);
-    let reason_code = PublishReceivedReason::try_from(reason_code_byte)?;
+    let reason_code = PublishReceivedReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidPublishReceivedReason)?;
 
     let mut reason_string = None;
     let mut user_properties = vec![];
@@ -637,7 +640,8 @@ fn decode_publish_release(
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
     let reason_code_byte = read_u8!(bytes);
-    let reason_code = PublishReleaseReason::try_from(reason_code_byte)?;
+    let reason_code = PublishReleaseReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidPublishReleaseReason)?;
 
     let mut reason_string = None;
     let mut user_properties = vec![];
@@ -663,7 +667,8 @@ fn decode_publish_complete(
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
     let reason_code_byte = read_u8!(bytes);
-    let reason_code = PublishCompleteReason::try_from(reason_code_byte)?;
+    let reason_code = PublishCompleteReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidPublishCompleteReason)?;
 
     let mut reason_string = None;
     let mut user_properties = vec![];
@@ -688,7 +693,8 @@ fn decode_disconnect(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let reason_code_byte = read_u8!(bytes);
-    let reason = DisconnectReason::try_from(reason_code_byte)?;
+    let reason = DisconnectReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidDisconnectReason)?;
 
     let mut session_expiry_interval = None;
     let mut reason_string = None;
@@ -742,7 +748,8 @@ pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> 
     let first_byte = read_u8!(bytes);
 
     let first_byte_val = (first_byte & 0b1111_0000) >> 4;
-    let packet_type = PacketType::try_from(first_byte_val)?;
+    let packet_type =
+        PacketType::try_from(first_byte_val).map_err(|_| DecodeError::InvalidPacketType)?;
     let remaining_packet_length = read_variable_int!(&mut bytes);
 
     let cursor_pos = bytes.position() as usize;

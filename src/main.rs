@@ -1,5 +1,5 @@
 use crate::types::{ConnectAckPacket, ConnectReason, DecodeError, Packet};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use tokio::{
     net::{TcpListener, TcpStream},
