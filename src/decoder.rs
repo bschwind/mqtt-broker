@@ -349,13 +349,13 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
     })?);
 
     // Start payload
-    let clean_start = 0b0000_0010 & connect_flags == 0b0000_0010;
-    let has_will = 0b0000_0100 & connect_flags == 0b0000_0100;
-    let will_qos_val = (0b0001_1000 & connect_flags) >> 3;
+    let clean_start = connect_flags & 0b0000_0010 == 0b0000_0010;
+    let has_will = connect_flags & 0b0000_0100 == 0b0000_0100;
+    let will_qos_val = (connect_flags & 0b0001_1000) >> 3;
     let will_qos = QoS::try_from(will_qos_val).map_err(|_| DecodeError::InvalidQoS)?;
-    let retain_will = 0b0010_0000 & connect_flags == 0b0010_0000;
-    let has_password = 0b0100_0000 & connect_flags == 0b0100_0000;
-    let has_user_name = 0b1000_0000 & connect_flags == 0b1000_0000;
+    let retain_will = connect_flags & 0b0010_0000 == 0b0010_0000;
+    let has_password = connect_flags & 0b0100_0000 == 0b0100_0000;
+    let has_user_name = connect_flags & 0b1000_0000 == 0b1000_0000;
 
     let client_id = read_string!(bytes);
 
@@ -766,15 +766,15 @@ fn decode_subscribe(
         let topic = read_string!(bytes);
         let options_byte = read_u8!(bytes);
 
-        let maximum_qos_val = 0b0000_0011 & options_byte;
+        let maximum_qos_val = options_byte & 0b0000_0011;
         let maximum_qos = QoS::try_from(maximum_qos_val).map_err(|_| DecodeError::InvalidQoS)?;
 
-        let retain_handling_val = (0b0011_0000 & options_byte) >> 4;
+        let retain_handling_val = (options_byte & 0b0011_0000) >> 4;
         let retain_handling = RetainHandling::try_from(retain_handling_val)
             .map_err(|_| DecodeError::InvalidRetainHandling)?;
 
-        let retain_as_published = (0b0000_1000 & options_byte) == 0b0000_1000;
-        let no_local = (0b0000_0100 & options_byte) == 0b0000_0100;
+        let retain_as_published = (options_byte & 0b0000_1000) == 0b0000_1000;
+        let no_local = (options_byte & 0b0000_0100) == 0b0000_0100;
 
         let subscription_topic = SubscriptionTopic {
             topic,
