@@ -15,6 +15,7 @@ pub enum DecodeError {
     InvalidPublishReceivedReason,
     InvalidPublishReleaseReason,
     InvalidPublishCompleteReason,
+    InvalidSubscribeAckReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -222,7 +223,7 @@ pub enum PublishCompleteReason {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive)]
 pub enum SubscribeAckReason {
     GrantedQoSZero = 0,
     GrantedQoSOne = 1,

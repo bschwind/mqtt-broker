@@ -3,7 +3,7 @@ use crate::types::{
     DisconnectReason, FinalWill, Packet, PacketType, PublishAckPacket, PublishAckReason,
     PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
     PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling,
-    SubscribePacket, SubscriptionTopic,
+    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -758,6 +758,41 @@ fn decode_subscribe(
     Ok(Some(Packet::Subscribe(packet)))
 }
 
+fn decode_subscribe_ack(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let start_cursor_pos = bytes.position();
+
+    let packet_id = read_u16!(bytes);
+
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::ReasonString(p) => reason_string = Some(p),
+            Property::UserProperty(p) => user_properties.push(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    let variable_header_size = bytes.position() - start_cursor_pos;
+    let payload_size = remaining_packet_length as u64 - variable_header_size;
+
+    let mut reason_codes = vec![];
+    for _ in 0..payload_size {
+        let next_byte = read_u8!(bytes);
+        let reason_code = SubscribeAckReason::try_from(next_byte)
+            .map_err(|_| DecodeError::InvalidSubscribeAckReason)?;
+        reason_codes.push(reason_code);
+    }
+
+    let packet = SubscribeAckPacket { packet_id, reason_string, user_properties, reason_codes };
+
+    Ok(Some(Packet::SubscribeAck(packet)))
+}
+
 fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
@@ -809,6 +844,7 @@ fn decode_packet(
         PacketType::PublishRelease => decode_publish_release(bytes, remaining_packet_length),
         PacketType::PublishComplete => decode_publish_complete(bytes, remaining_packet_length),
         PacketType::Subscribe => decode_subscribe(bytes, remaining_packet_length),
+        PacketType::SubscribeAck => decode_subscribe_ack(bytes, remaining_packet_length),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
