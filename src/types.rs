@@ -17,6 +17,7 @@ pub enum DecodeError {
     InvalidPublishCompleteReason,
     InvalidSubscribeAckReason,
     InvalidUnsubscribeAckReason,
+    InvalidAuthenticateReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -286,11 +287,12 @@ pub enum DisconnectReason {
     WildcardSubscriptionsNotAvailable = 162,
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum AuthenticateReason {
-    Success,
-    ContinueAuthentication,
-    ReAuthenticate,
+    Success = 0,
+    ContinueAuthentication = 24,
+    ReAuthenticate = 25,
 }
 
 // Payloads
@@ -351,7 +353,7 @@ pub struct ConnectPacket {
 pub struct ConnectAckPacket {
     // Variable header
     pub session_present: bool,
-    pub reason: ConnectReason,
+    pub reason_code: ConnectReason,
 
     // Properties
     pub session_expiry_interval: Option<SessionExpiryInterval>,
@@ -496,7 +498,7 @@ pub struct UnsubscribeAckPacket {
 #[derive(Debug)]
 pub struct DisconnectPacket {
     // Variable header
-    pub reason: DisconnectReason,
+    pub reason_code: DisconnectReason,
 
     // Properties
     pub session_expiry_interval: Option<SessionExpiryInterval>,

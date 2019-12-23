@@ -1,10 +1,11 @@
 use crate::types::{
-    properties::*, ConnectAckPacket, ConnectPacket, ConnectReason, DecodeError, DisconnectPacket,
-    DisconnectReason, FinalWill, Packet, PacketType, PublishAckPacket, PublishAckReason,
-    PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
-    PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling,
-    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
-    UnsubscribeAckPacket, UnsubscribeAckReason, UnsubscribePacket,
+    properties::*, AuthenticatePacket, AuthenticateReason, ConnectAckPacket, ConnectPacket,
+    ConnectReason, DecodeError, DisconnectPacket, DisconnectReason, FinalWill, Packet, PacketType,
+    PublishAckPacket, PublishAckReason, PublishCompletePacket, PublishCompleteReason,
+    PublishPacket, PublishReceivedPacket, PublishReceivedReason, PublishReleasePacket,
+    PublishReleaseReason, QoS, RetainHandling, SubscribeAckPacket, SubscribeAckReason,
+    SubscribePacket, SubscriptionTopic, UnsubscribeAckPacket, UnsubscribeAckReason,
+    UnsubscribePacket,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -439,7 +440,7 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     let session_present = (flags & 0b0000_0001) == 0b0000_0001;
 
     let reason_code_byte = read_u8!(bytes);
-    let reason =
+    let reason_code =
         ConnectReason::try_from(reason_code_byte).map_err(|_| DecodeError::InvalidConnectReason)?;
 
     let mut session_expiry_interval = None;
@@ -487,7 +488,7 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
 
     let packet = ConnectAckPacket {
         session_present,
-        reason,
+        reason_code,
         session_expiry_interval,
         receive_maximum,
         maximum_qos,
@@ -876,7 +877,7 @@ fn decode_disconnect(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let reason_code_byte = read_u8!(bytes);
-    let reason = DisconnectReason::try_from(reason_code_byte)
+    let reason_code = DisconnectReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidDisconnectReason)?;
 
     let mut session_expiry_interval = None;
@@ -897,7 +898,7 @@ fn decode_disconnect(
     }
 
     let packet = DisconnectPacket {
-        reason,
+        reason_code,
         session_expiry_interval,
         reason_string,
         user_properties,
@@ -907,12 +908,59 @@ fn decode_disconnect(
     Ok(Some(Packet::Disconnect(packet)))
 }
 
+fn decode_authenticate(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    if remaining_packet_length == 0 {
+        return Ok(Some(Packet::Authenticate(AuthenticatePacket {
+            reason_code: AuthenticateReason::Success,
+            authentication_method: None,
+            authentication_data: None,
+            reason_string: None,
+            user_properties: vec![],
+        })));
+    }
+
+    let reason_code_byte = read_u8!(bytes);
+    let reason_code = AuthenticateReason::try_from(reason_code_byte)
+        .map_err(|_| DecodeError::InvalidAuthenticateReason)?;
+
+    let mut authentication_method = None;
+    let mut authentication_data = None;
+    let mut reason_string = None;
+    let mut user_properties = vec![];
+
+    if remaining_packet_length >= 2 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::AuthenticationMethod(p) => authentication_method = Some(p),
+                Property::AuthenticationData(p) => authentication_data = Some(p),
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
+
+    let packet = AuthenticatePacket {
+        reason_code,
+        authentication_method,
+        authentication_data,
+        reason_string,
+        user_properties,
+    };
+
+    Ok(Some(Packet::Authenticate(packet)))
+}
+
 fn decode_packet(
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
     first_byte: u8,
 ) -> Result<Option<Packet>, DecodeError> {
+    // TODO - support omitted reason codes and properties
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
@@ -928,7 +976,7 @@ fn decode_packet(
         PacketType::PingRequest => Ok(Some(Packet::PingRequest)),
         PacketType::PingResponse => Ok(Some(Packet::PingResponse)),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
-        _ => Ok(None),
+        PacketType::Authenticate => decode_authenticate(bytes, remaining_packet_length),
     }
 }
 

@@ -55,7 +55,7 @@ async fn client_handler(stream: TcpStream) {
                     let connect_ack = ConnectAckPacket {
                         // Variable header
                         session_present: false,
-                        reason: ConnectReason::Success,
+                        reason_code: ConnectReason::Success,
 
                         // Properties
                         session_expiry_interval: None,
