@@ -846,9 +846,8 @@ fn decode_unsubscribe(
     let mut user_properties = vec![];
 
     return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::UserProperty(p) => user_properties.push(p),
-            _ => {}, // Invalid property for packet
+        if let Property::UserProperty(p) = property {
+            user_properties.push(p);
         }
     })?);
 
