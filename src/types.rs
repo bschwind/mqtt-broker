@@ -221,20 +221,21 @@ pub enum PublishCompleteReason {
     PacketIdentifierNotFound = 146,
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 pub enum SubscribeAckReason {
-    GrantedQoSZero,
-    GrantedQoSOne,
-    GrantedQoSTwo,
-    UnspecifiedError,
-    ImplementationSpecificError,
-    NotAuthorized,
-    TopicFilterInvalid,
-    PacketIdentifierInUse,
-    QuotaExceeded,
-    SharedSubscriptionsNotSupported,
-    SubscriptionIdentifiersNotSupported,
-    WildcardSubscriptionsNotSupported,
+    GrantedQoSZero = 0,
+    GrantedQoSOne = 1,
+    GrantedQoSTwo = 2,
+    UnspecifiedError = 128,
+    ImplementationSpecificError = 131,
+    NotAuthorized = 135,
+    TopicFilterInvalid = 143,
+    PacketIdentifierInUse = 145,
+    QuotaExceeded = 151,
+    SharedSubscriptionsNotSupported = 158,
+    SubscriptionIdentifiersNotSupported = 161,
+    WildcardSubscriptionsNotSupported = 162,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,6 @@
-use crate::types::{ConnectAckPacket, ConnectReason, DecodeError, Packet};
+use crate::types::{
+    ConnectAckPacket, ConnectReason, DecodeError, Packet, SubscribeAckPacket, SubscribeAckReason,
+};
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use tokio::{
@@ -48,34 +50,53 @@ async fn client_handler(stream: TcpStream) {
         match frame {
             Ok(frame) => {
                 println!("Got a frame: {:#?}", frame);
-                let connect_ack = ConnectAckPacket {
-                    // Variable header
-                    session_present: false,
-                    reason: ConnectReason::Success,
-
-                    // Properties
-                    session_expiry_interval: None,
-                    receive_maximum: None,
-                    maximum_qos: None,
-                    retain_available: None,
-                    maximum_packet_size: None,
-                    assigned_client_identifier: None,
-                    topic_alias_maximum: None,
-                    reason_string: None,
-                    user_properties: vec![],
-                    wildcard_subscription_available: None,
-                    subscription_identifiers_available: None,
-                    shared_subscription_available: None,
-                    server_keep_alive: None,
-                    response_information: None,
-                    server_reference: None,
-                    authentication_method: None,
-                    authentication_data: None,
-                };
 
                 if let Packet::Connect(_) = frame {
+                    let connect_ack = ConnectAckPacket {
+                        // Variable header
+                        session_present: false,
+                        reason: ConnectReason::Success,
+
+                        // Properties
+                        session_expiry_interval: None,
+                        receive_maximum: None,
+                        maximum_qos: None,
+                        retain_available: None,
+                        maximum_packet_size: None,
+                        assigned_client_identifier: None,
+                        topic_alias_maximum: None,
+                        reason_string: None,
+                        user_properties: vec![],
+                        wildcard_subscription_available: None,
+                        subscription_identifiers_available: None,
+                        shared_subscription_available: None,
+                        server_keep_alive: None,
+                        response_information: None,
+                        server_reference: None,
+                        authentication_method: None,
+                        authentication_data: None,
+                    };
+
                     framed_sock
                         .send(Packet::ConnectAck(connect_ack))
+                        .await
+                        .expect("Couldn't forward packet to framed socket");
+                }
+
+                if let Packet::Subscribe(packet) = frame {
+                    let subscribe_ack = SubscribeAckPacket {
+                        packet_id: packet.packet_id,
+                        reason_string: None,
+                        user_properties: vec![],
+                        reason_codes: packet
+                            .subscription_topics
+                            .iter()
+                            .map(|_| SubscribeAckReason::GrantedQoSOne)
+                            .collect(),
+                    };
+
+                    framed_sock
+                        .send(Packet::SubscribeAck(subscribe_ack))
                         .await
                         .expect("Couldn't forward packet to framed socket");
                 }

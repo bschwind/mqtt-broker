@@ -1,4 +1,4 @@
-use crate::types::{ConnectAckPacket, DecodeError, Packet};
+use crate::types::{ConnectAckPacket, DecodeError, Packet, SubscribeAckPacket};
 use bytes::{BufMut, BytesMut};
 
 fn encode_variable_int(value: u32, bytes: &mut BytesMut) -> usize {
@@ -49,6 +49,28 @@ fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) -> Result
     Ok(())
 }
 
+fn encode_subscribe_ack(
+    packet: &SubscribeAckPacket,
+    bytes: &mut BytesMut,
+) -> Result<(), DecodeError> {
+    // TODO - calculate remaining length
+    let remaining_length = 3 + packet.reason_codes.len();
+
+    encode_variable_int(remaining_length as u32, bytes);
+
+    bytes.put_u16(packet.packet_id);
+
+    // TODO - replace with actual property length
+    let property_length = 0;
+    encode_variable_int(property_length, bytes);
+
+    for code in &packet.reason_codes {
+        bytes.put_u8((*code) as u8);
+    }
+
+    Ok(())
+}
+
 pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) -> Result<(), DecodeError> {
     // TODO - reserve the exact amount
     // bytes.reserve(packet_size);
@@ -60,6 +82,7 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) -> Result<(), DecodeEr
 
     match packet {
         Packet::ConnectAck(p) => encode_connect_ack(p, bytes)?,
+        Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes)?,
         _ => {},
     }
 
