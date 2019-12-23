@@ -588,6 +588,16 @@ fn decode_publish_ack(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
+
+    if remaining_packet_length == 2 {
+        return Ok(Some(Packet::PublishAck(PublishAckPacket {
+            packet_id,
+            reason_code: PublishAckReason::Success,
+            reason_string: None,
+            user_properties: vec![],
+        })));
+    }
+
     let reason_code_byte = read_u8!(bytes);
     let reason_code = PublishAckReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidPublishAckReason)?;
@@ -615,6 +625,16 @@ fn decode_publish_received(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
+
+    if remaining_packet_length == 2 {
+        return Ok(Some(Packet::PublishReceived(PublishReceivedPacket {
+            packet_id,
+            reason_code: PublishReceivedReason::Success,
+            reason_string: None,
+            user_properties: vec![],
+        })));
+    }
+
     let reason_code_byte = read_u8!(bytes);
     let reason_code = PublishReceivedReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidPublishReceivedReason)?;
@@ -642,6 +662,16 @@ fn decode_publish_release(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
+
+    if remaining_packet_length == 2 {
+        return Ok(Some(Packet::PublishRelease(PublishReleasePacket {
+            packet_id,
+            reason_code: PublishReleaseReason::Success,
+            reason_string: None,
+            user_properties: vec![],
+        })));
+    }
+
     let reason_code_byte = read_u8!(bytes);
     let reason_code = PublishReleaseReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidPublishReleaseReason)?;
@@ -669,6 +699,16 @@ fn decode_publish_complete(
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
+
+    if remaining_packet_length == 2 {
+        return Ok(Some(Packet::PublishComplete(PublishCompletePacket {
+            packet_id,
+            reason_code: PublishCompleteReason::Success,
+            reason_string: None,
+            user_properties: vec![],
+        })));
+    }
+
     let reason_code_byte = read_u8!(bytes);
     let reason_code = PublishCompleteReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidPublishCompleteReason)?;
@@ -876,6 +916,16 @@ fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
 ) -> Result<Option<Packet>, DecodeError> {
+    if remaining_packet_length == 0 {
+        return Ok(Some(Packet::Disconnect(DisconnectPacket {
+            reason_code: DisconnectReason::NormalDisconnection,
+            session_expiry_interval: None,
+            reason_string: None,
+            user_properties: vec![],
+            server_reference: None,
+        })));
+    }
+
     let reason_code_byte = read_u8!(bytes);
     let reason_code = DisconnectReason::try_from(reason_code_byte)
         .map_err(|_| DecodeError::InvalidDisconnectReason)?;
@@ -960,7 +1010,6 @@ fn decode_packet(
     remaining_packet_length: u32,
     first_byte: u8,
 ) -> Result<Option<Packet>, DecodeError> {
-    // TODO - support omitted reason codes and properties
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
@@ -997,13 +1046,17 @@ pub fn decode_mqtt(bytes: &mut BytesMut) -> Result<Option<Packet>, DecodeError> 
         return Ok(None);
     }
 
-    // TODO - use return_if_none! here after finishing decode_packet function
-    let packet = decode_packet(&packet_type, &mut bytes, remaining_packet_length, first_byte)?;
+    let packet = return_if_none!(decode_packet(
+        &packet_type,
+        &mut bytes,
+        remaining_packet_length,
+        first_byte
+    )?);
 
     let cursor_pos = bytes.position() as usize;
     let bytes = bytes.into_inner();
 
     let _rest = bytes.split_to(cursor_pos);
 
-    Ok(packet)
+    Ok(Some(packet))
 }
