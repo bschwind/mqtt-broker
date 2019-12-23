@@ -925,6 +925,8 @@ fn decode_packet(
         PacketType::SubscribeAck => decode_subscribe_ack(bytes, remaining_packet_length),
         PacketType::Unsubscribe => decode_unsubscribe(bytes, remaining_packet_length),
         PacketType::UnsubscribeAck => decode_unsubscribe_ack(bytes, remaining_packet_length),
+        PacketType::PingRequest => Ok(Some(Packet::PingRequest)),
+        PacketType::PingResponse => Ok(Some(Packet::PingResponse)),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
