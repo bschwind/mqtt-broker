@@ -16,6 +16,7 @@ pub enum DecodeError {
     InvalidPublishReleaseReason,
     InvalidPublishCompleteReason,
     InvalidSubscribeAckReason,
+    InvalidUnsubscribeAckReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
@@ -239,15 +240,16 @@ pub enum SubscribeAckReason {
     WildcardSubscriptionsNotSupported = 162,
 }
 
-#[derive(Debug)]
+#[repr(u8)]
+#[derive(Debug, TryFromPrimitive)]
 pub enum UnsubscribeAckReason {
-    Success,
-    NoSubscriptionExisted,
-    UnspecifiedError,
-    ImplementationSpecificError,
-    NotAuthorized,
-    TopicFilterInvalid,
-    PacketIdentifierInUse,
+    Success = 0,
+    NoSubscriptionExisted = 17,
+    UnspecifiedError = 128,
+    ImplementationSpecificError = 131,
+    NotAuthorized = 135,
+    TopicFilterInvalid = 143,
+    PacketIdentifierInUse = 145,
 }
 
 #[repr(u8)]
