@@ -3,7 +3,7 @@ use crate::types::{
     DisconnectReason, FinalWill, Packet, PacketType, PublishAckPacket, PublishAckReason,
     PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
     PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling,
-    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
+    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic, UnsubscribePacket,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -793,6 +793,48 @@ fn decode_subscribe_ack(
     Ok(Some(Packet::SubscribeAck(packet)))
 }
 
+fn decode_unsubscribe(
+    bytes: &mut Cursor<&mut BytesMut>,
+    remaining_packet_length: u32,
+) -> Result<Option<Packet>, DecodeError> {
+    let start_cursor_pos = bytes.position();
+
+    let packet_id = read_u16!(bytes);
+
+    let mut user_properties = vec![];
+
+    return_if_none!(decode_properties(bytes, |property| {
+        match property {
+            Property::UserProperty(p) => user_properties.push(p),
+            _ => {}, // Invalid property for packet
+        }
+    })?);
+
+    let variable_header_size = bytes.position() - start_cursor_pos;
+    let payload_size = remaining_packet_length as u64 - variable_header_size;
+
+    let mut topics = vec![];
+    let mut bytes_read = 0;
+
+    loop {
+        if bytes_read >= payload_size {
+            break;
+        }
+
+        let start_cursor_pos = bytes.position();
+
+        let topic = read_string!(bytes);
+        topics.push(topic);
+
+        let end_cursor_pos = bytes.position();
+        bytes_read += end_cursor_pos - start_cursor_pos;
+    }
+
+    let packet = UnsubscribePacket { packet_id, user_properties, topics };
+
+    Ok(Some(Packet::Unsubscribe(packet)))
+}
+
 fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
@@ -845,6 +887,7 @@ fn decode_packet(
         PacketType::PublishComplete => decode_publish_complete(bytes, remaining_packet_length),
         PacketType::Subscribe => decode_subscribe(bytes, remaining_packet_length),
         PacketType::SubscribeAck => decode_subscribe_ack(bytes, remaining_packet_length),
+        PacketType::Unsubscribe => decode_unsubscribe(bytes, remaining_packet_length),
         PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
         _ => Ok(None),
     }
