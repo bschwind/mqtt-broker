@@ -1,3 +1,4 @@
+use bytes::{BufMut, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
 
@@ -23,9 +24,82 @@ pub enum DecodeError {
     Io(std::io::Error),
 }
 
+#[derive(Debug)]
+pub struct VariableByteInt(pub u32);
+
+impl VariableByteInt {
+    pub fn encode_to_bytes(&self, bytes: &mut BytesMut) {
+        let mut x = self.0;
+
+        loop {
+            let mut encoded_byte: u8 = (x % 128) as u8;
+            x /= 128;
+
+            if x > 0 {
+                encoded_byte |= 128;
+            }
+
+            bytes.put_u8(encoded_byte);
+
+            if x == 0 {
+                break;
+            }
+        }
+    }
+}
+
 impl From<std::io::Error> for DecodeError {
     fn from(err: std::io::Error) -> Self {
         DecodeError::Io(err)
+    }
+}
+
+trait PacketSize {
+    fn calc_size(&self) -> u32;
+}
+
+impl PacketSize for VariableByteInt {
+    fn calc_size(&self) -> u32 {
+        match self.0 {
+            0..=127 => 1,
+            128..=16_383 => 2,
+            16384..=2_097_151 => 3,
+            2_097_152..=268_435_455 => 4,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl PacketSize for String {
+    fn calc_size(&self) -> u32 {
+        2 + self.len() as u32
+    }
+}
+
+impl PacketSize for &[u8] {
+    fn calc_size(&self) -> u32 {
+        2 + self.len() as u32
+    }
+}
+
+impl PacketSize for Vec<u8> {
+    fn calc_size(&self) -> u32 {
+        2 + self.len() as u32
+    }
+}
+
+impl PacketSize for Vec<UserProperty> {
+    fn calc_size(&self) -> u32 {
+        self.iter().map(|x| x.calc_size()).sum()
+    }
+}
+
+impl<T: PacketSize> PacketSize for Option<T> {
+    fn calc_size(&self) -> u32 {
+        match self {
+            Some(p) => p.calc_size(),
+            None => 0,
+        }
     }
 }
 
@@ -66,62 +140,236 @@ pub enum RetainHandling {
 }
 
 pub mod properties {
-    use super::QoS;
+    use super::{PacketSize, QoS, VariableByteInt};
+    use num_enum::TryFromPrimitive;
+
+    // TODO - Technically property IDs are encoded as a variable
+    //        byte int, so `1 + ` lines should be replaced with the
+    //        variable byte count. But in practice they're all 1.
     // Property structs
     #[derive(Debug)]
     pub struct PayloadFormatIndicator(pub u8);
+    impl PacketSize for PayloadFormatIndicator {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
+
     #[derive(Debug)]
     pub struct MessageExpiryInterval(pub u32);
+    impl PacketSize for MessageExpiryInterval {
+        fn calc_size(&self) -> u32 {
+            1 + 4
+        }
+    }
     #[derive(Debug)]
     pub struct ContentType(pub String);
+    impl PacketSize for ContentType {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
+
     #[derive(Debug)]
     pub struct ResponseTopic(pub String);
+    impl PacketSize for ResponseTopic {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct CorrelationData(pub Vec<u8>);
+    impl PacketSize for CorrelationData {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
-    pub struct SubscriptionIdentifier(pub u32);
+    pub struct SubscriptionIdentifier(pub VariableByteInt);
+    impl PacketSize for SubscriptionIdentifier {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct SessionExpiryInterval(pub u32);
+    impl PacketSize for SessionExpiryInterval {
+        fn calc_size(&self) -> u32 {
+            1 + 4
+        }
+    }
     #[derive(Debug)]
     pub struct AssignedClientIdentifier(pub String);
+    impl PacketSize for AssignedClientIdentifier {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct ServerKeepAlive(pub u16);
+    impl PacketSize for ServerKeepAlive {
+        fn calc_size(&self) -> u32 {
+            1 + 2
+        }
+    }
     #[derive(Debug)]
     pub struct AuthenticationMethod(pub String);
+    impl PacketSize for AuthenticationMethod {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct AuthenticationData(pub Vec<u8>);
+    impl PacketSize for AuthenticationData {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct RequestProblemInformation(pub u8);
+    impl PacketSize for RequestProblemInformation {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct WillDelayInterval(pub u32);
+    impl PacketSize for WillDelayInterval {
+        fn calc_size(&self) -> u32 {
+            1 + 4
+        }
+    }
     #[derive(Debug)]
     pub struct RequestResponseInformation(pub u8);
+    impl PacketSize for RequestResponseInformation {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct ResponseInformation(pub String);
+    impl PacketSize for ResponseInformation {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct ServerReference(pub String);
+    impl PacketSize for ServerReference {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct ReasonString(pub String);
+    impl PacketSize for ReasonString {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct ReceiveMaximum(pub u16);
+    impl PacketSize for ReceiveMaximum {
+        fn calc_size(&self) -> u32 {
+            1 + 2
+        }
+    }
     #[derive(Debug)]
     pub struct TopicAliasMaximum(pub u16);
+    impl PacketSize for TopicAliasMaximum {
+        fn calc_size(&self) -> u32 {
+            1 + 2
+        }
+    }
     #[derive(Debug)]
     pub struct TopicAlias(pub u16);
+    impl PacketSize for TopicAlias {
+        fn calc_size(&self) -> u32 {
+            1 + 2
+        }
+    }
     #[derive(Debug)]
     pub struct MaximumQos(pub QoS);
+    impl PacketSize for MaximumQos {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct RetainAvailable(pub u8);
+    impl PacketSize for RetainAvailable {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct UserProperty(pub String, pub String);
+    impl PacketSize for UserProperty {
+        fn calc_size(&self) -> u32 {
+            1 + self.0.calc_size() + self.1.calc_size()
+        }
+    }
     #[derive(Debug)]
     pub struct MaximumPacketSize(pub u32);
+    impl PacketSize for MaximumPacketSize {
+        fn calc_size(&self) -> u32 {
+            1 + 4
+        }
+    }
     #[derive(Debug)]
     pub struct WildcardSubscriptionAvailable(pub u8);
+    impl PacketSize for WildcardSubscriptionAvailable {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct SubscriptionIdentifierAvailable(pub u8);
+    impl PacketSize for SubscriptionIdentifierAvailable {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
     #[derive(Debug)]
     pub struct SharedSubscriptionAvailable(pub u8);
+    impl PacketSize for SharedSubscriptionAvailable {
+        fn calc_size(&self) -> u32 {
+            1 + 1
+        }
+    }
+
+    #[repr(u32)]
+    #[derive(Debug, TryFromPrimitive)]
+    pub enum PropertyType {
+        PayloadFormatIndicator = 1,
+        MessageExpiryInterval = 2,
+        ContentType = 3,
+        ResponseTopic = 8,
+        CorrelationData = 9,
+        SubscriptionIdentifier = 11,
+        SessionExpiryInterval = 17,
+        AssignedClientIdentifier = 18,
+        ServerKeepAlive = 19,
+        AuthenticationMethod = 21,
+        AuthenticationData = 22,
+        RequestProblemInformation = 23,
+        WillDelayInterval = 24,
+        RequestResponseInformation = 25,
+        ResponseInformation = 26,
+        ServerReference = 28,
+        ReasonString = 31,
+        ReceiveMaximum = 33,
+        TopicAliasMaximum = 34,
+        TopicAlias = 35,
+        MaximumQos = 36,
+        RetainAvailable = 37,
+        UserProperty = 38,
+        MaximumPacketSize = 39,
+        WildcardSubscriptionAvailable = 40,
+        SubscriptionIdentifierAvailable = 41,
+        SharedSubscriptionAvailable = 42,
+    }
 
     #[derive(Debug)]
     pub enum Property {
@@ -152,6 +400,46 @@ pub mod properties {
         WildcardSubscriptionAvailable(WildcardSubscriptionAvailable),
         SubscriptionIdentifierAvailable(SubscriptionIdentifierAvailable),
         SharedSubscriptionAvailable(SharedSubscriptionAvailable),
+    }
+
+    impl Property {
+        pub fn property_type(&self) -> PropertyType {
+            match self {
+                Property::PayloadFormatIndicator(_) => PropertyType::PayloadFormatIndicator,
+                Property::MessageExpiryInterval(_) => PropertyType::MessageExpiryInterval,
+                Property::ContentType(_) => PropertyType::ContentType,
+                Property::ResponseTopic(_) => PropertyType::ResponseTopic,
+                Property::CorrelationData(_) => PropertyType::CorrelationData,
+                Property::SubscriptionIdentifier(_) => PropertyType::SubscriptionIdentifier,
+                Property::SessionExpiryInterval(_) => PropertyType::SessionExpiryInterval,
+                Property::AssignedClientIdentifier(_) => PropertyType::AssignedClientIdentifier,
+                Property::ServerKeepAlive(_) => PropertyType::ServerKeepAlive,
+                Property::AuthenticationMethod(_) => PropertyType::AuthenticationMethod,
+                Property::AuthenticationData(_) => PropertyType::AuthenticationData,
+                Property::RequestProblemInformation(_) => PropertyType::RequestProblemInformation,
+                Property::WillDelayInterval(_) => PropertyType::WillDelayInterval,
+                Property::RequestResponseInformation(_) => PropertyType::RequestResponseInformation,
+                Property::ResponseInformation(_) => PropertyType::ResponseInformation,
+                Property::ServerReference(_) => PropertyType::ServerReference,
+                Property::ReasonString(_) => PropertyType::ReasonString,
+                Property::ReceiveMaximum(_) => PropertyType::ReceiveMaximum,
+                Property::TopicAliasMaximum(_) => PropertyType::TopicAliasMaximum,
+                Property::TopicAlias(_) => PropertyType::TopicAlias,
+                Property::MaximumQos(_) => PropertyType::MaximumQos,
+                Property::RetainAvailable(_) => PropertyType::RetainAvailable,
+                Property::UserProperty(_) => PropertyType::UserProperty,
+                Property::MaximumPacketSize(_) => PropertyType::MaximumPacketSize,
+                Property::WildcardSubscriptionAvailable(_) => {
+                    PropertyType::WildcardSubscriptionAvailable
+                },
+                Property::SubscriptionIdentifierAvailable(_) => {
+                    PropertyType::SubscriptionIdentifierAvailable
+                },
+                Property::SharedSubscriptionAvailable(_) => {
+                    PropertyType::SharedSubscriptionAvailable
+                },
+            }
+        }
     }
 }
 
@@ -311,6 +599,28 @@ pub struct FinalWill {
     pub response_topic: Option<ResponseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
+}
+
+impl PacketSize for FinalWill {
+    fn calc_size(&self) -> u32 {
+        let mut size = 0;
+
+        size += self.topic.calc_size();
+        size += self.payload.calc_size();
+
+        let mut property_size = 0;
+        property_size += self.will_delay_interval.calc_size();
+        property_size += self.payload_format_indicator.calc_size();
+        property_size += self.message_expiry_interval.calc_size();
+        property_size += self.content_type.calc_size();
+        property_size += self.response_topic.calc_size();
+        property_size += self.correlation_data.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        size += property_size + VariableByteInt(property_size).calc_size();
+
+        size
+    }
 }
 
 #[derive(Debug)]
@@ -593,5 +903,97 @@ impl Packet {
                 flags
             },
         }
+    }
+
+    pub fn calculate_size(&self) -> u32 {
+        self.calc_size()
+    }
+}
+
+impl PacketSize for Packet {
+    fn calc_size(&self) -> u32 {
+        let size = match self {
+            Packet::Connect(p) => {
+                let mut size = p.protocol_name.calc_size();
+
+                // Protocol level + connect flags + keep-alive
+                size += 1 + 1 + 2;
+
+                let mut property_size = 0;
+                property_size += p.session_expiry_interval.calc_size();
+                property_size += p.receive_maximum.calc_size();
+                property_size += p.maximum_packet_size.calc_size();
+                property_size += p.topic_alias_maximum.calc_size();
+                property_size += p.request_response_information.calc_size();
+                property_size += p.request_problem_information.calc_size();
+                property_size += p.user_properties.calc_size();
+                property_size += p.authentication_method.calc_size();
+                property_size += p.authentication_data.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.client_id.calc_size();
+                size += p.will.calc_size();
+                size += p.user_name.calc_size();
+                size += p.password.calc_size();
+
+                size
+            },
+            Packet::ConnectAck(p) => {
+                // flags + reason code
+                let mut size = 1 + 1;
+
+                let mut property_size = 0;
+                property_size += p.session_expiry_interval.calc_size();
+                property_size += p.receive_maximum.calc_size();
+                property_size += p.maximum_qos.calc_size();
+                property_size += p.retain_available.calc_size();
+                property_size += p.maximum_packet_size.calc_size();
+                property_size += p.assigned_client_identifier.calc_size();
+                property_size += p.topic_alias_maximum.calc_size();
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+                property_size += p.wildcard_subscription_available.calc_size();
+                property_size += p.subscription_identifiers_available.calc_size();
+                property_size += p.shared_subscription_available.calc_size();
+                property_size += p.server_keep_alive.calc_size();
+                property_size += p.response_information.calc_size();
+                property_size += p.server_reference.calc_size();
+                property_size += p.authentication_method.calc_size();
+                property_size += p.authentication_data.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::Publish(_) => 0,
+            Packet::PublishAck(_) => 0,
+            Packet::PublishReceived(_) => 0,
+            Packet::PublishRelease(_) => 0,
+            Packet::PublishComplete(_) => 0,
+            Packet::Subscribe(_) => 0,
+            Packet::SubscribeAck(p) => {
+                // Packet id
+                let mut size = 2;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.reason_codes.len() as u32;
+
+                size
+            },
+            Packet::Unsubscribe(_) => 0,
+            Packet::UnsubscribeAck(_) => 0,
+            Packet::PingRequest => 0,
+            Packet::PingResponse => 0,
+            Packet::Disconnect(_) => 0,
+            Packet::Authenticate(_) => 0,
+        };
+
+        size
     }
 }

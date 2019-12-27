@@ -5,7 +5,7 @@ use crate::types::{
     PublishPacket, PublishReceivedPacket, PublishReceivedReason, PublishReleasePacket,
     PublishReleaseReason, QoS, RetainHandling, SubscribeAckPacket, SubscribeAckReason,
     SubscribePacket, SubscriptionTopic, UnsubscribeAckPacket, UnsubscribeAckReason,
-    UnsubscribePacket,
+    UnsubscribePacket, VariableByteInt,
 };
 use bytes::{Buf, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
@@ -156,136 +156,138 @@ fn decode_property(
     property_id: u32,
     bytes: &mut Cursor<&mut BytesMut>,
 ) -> Result<Option<Property>, DecodeError> {
-    match property_id {
-        1 => {
+    let property_type =
+        PropertyType::try_from(property_id).map_err(|_| DecodeError::InvalidPropertyId)?;
+
+    match property_type {
+        PropertyType::PayloadFormatIndicator => {
             let format_indicator = read_u8!(bytes);
             Ok(Some(Property::PayloadFormatIndicator(PayloadFormatIndicator(format_indicator))))
         },
-        2 => {
+        PropertyType::MessageExpiryInterval => {
             let message_expiry_interval = read_u32!(bytes);
             Ok(Some(Property::MessageExpiryInterval(MessageExpiryInterval(
                 message_expiry_interval,
             ))))
         },
-        3 => {
+        PropertyType::ContentType => {
             let content_type = read_string!(bytes);
             Ok(Some(Property::ContentType(ContentType(content_type))))
         },
-        8 => {
+        PropertyType::ResponseTopic => {
             let response_topic = read_string!(bytes);
             Ok(Some(Property::ResponseTopic(ResponseTopic(response_topic))))
         },
-        9 => {
+        PropertyType::CorrelationData => {
             let correlation_data = read_binary_data!(bytes);
             Ok(Some(Property::CorrelationData(CorrelationData(correlation_data))))
         },
-        11 => {
+        PropertyType::SubscriptionIdentifier => {
             let subscription_identifier = read_u32!(bytes);
-            Ok(Some(Property::SubscriptionIdentifier(SubscriptionIdentifier(
+            Ok(Some(Property::SubscriptionIdentifier(SubscriptionIdentifier(VariableByteInt(
                 subscription_identifier,
-            ))))
+            )))))
         },
-        17 => {
+        PropertyType::SessionExpiryInterval => {
             let session_expiry_interval = read_u32!(bytes);
             Ok(Some(Property::SessionExpiryInterval(SessionExpiryInterval(
                 session_expiry_interval,
             ))))
         },
-        18 => {
+        PropertyType::AssignedClientIdentifier => {
             let assigned_client_identifier = read_string!(bytes);
             Ok(Some(Property::AssignedClientIdentifier(AssignedClientIdentifier(
                 assigned_client_identifier,
             ))))
         },
-        19 => {
+        PropertyType::ServerKeepAlive => {
             let server_keep_alive = read_u16!(bytes);
             Ok(Some(Property::ServerKeepAlive(ServerKeepAlive(server_keep_alive))))
         },
-        21 => {
+        PropertyType::AuthenticationMethod => {
             let authentication_method = read_string!(bytes);
             Ok(Some(Property::AuthenticationMethod(AuthenticationMethod(authentication_method))))
         },
-        22 => {
+        PropertyType::AuthenticationData => {
             let authentication_data = read_binary_data!(bytes);
             Ok(Some(Property::AuthenticationData(AuthenticationData(authentication_data))))
         },
-        23 => {
+        PropertyType::RequestProblemInformation => {
             let request_problem_information = read_u8!(bytes);
             Ok(Some(Property::RequestProblemInformation(RequestProblemInformation(
                 request_problem_information,
             ))))
         },
-        24 => {
+        PropertyType::WillDelayInterval => {
             let will_delay_interval = read_u32!(bytes);
             Ok(Some(Property::WillDelayInterval(WillDelayInterval(will_delay_interval))))
         },
-        25 => {
+        PropertyType::RequestResponseInformation => {
             let request_response_information = read_u8!(bytes);
             Ok(Some(Property::RequestResponseInformation(RequestResponseInformation(
                 request_response_information,
             ))))
         },
-        26 => {
+        PropertyType::ResponseInformation => {
             let response_information = read_string!(bytes);
             Ok(Some(Property::ResponseInformation(ResponseInformation(response_information))))
         },
-        28 => {
+        PropertyType::ServerReference => {
             let server_reference = read_string!(bytes);
             Ok(Some(Property::ServerReference(ServerReference(server_reference))))
         },
-        31 => {
+        PropertyType::ReasonString => {
             let reason_string = read_string!(bytes);
             Ok(Some(Property::ReasonString(ReasonString(reason_string))))
         },
-        33 => {
+        PropertyType::ReceiveMaximum => {
             let receive_maximum = read_u16!(bytes);
             Ok(Some(Property::ReceiveMaximum(ReceiveMaximum(receive_maximum))))
         },
-        34 => {
+        PropertyType::TopicAliasMaximum => {
             let topic_alias_maximum = read_u16!(bytes);
             Ok(Some(Property::TopicAliasMaximum(TopicAliasMaximum(topic_alias_maximum))))
         },
-        35 => {
+        PropertyType::TopicAlias => {
             let topic_alias = read_u16!(bytes);
             Ok(Some(Property::TopicAlias(TopicAlias(topic_alias))))
         },
-        36 => {
+        PropertyType::MaximumQos => {
             let qos_byte = read_u8!(bytes);
             let qos = QoS::try_from(qos_byte).map_err(|_| DecodeError::InvalidQoS)?;
 
             Ok(Some(Property::MaximumQos(MaximumQos(qos))))
         },
-        37 => {
+        PropertyType::RetainAvailable => {
             let retain_available = read_u8!(bytes);
             Ok(Some(Property::RetainAvailable(RetainAvailable(retain_available))))
         },
-        38 => {
+        PropertyType::UserProperty => {
             let (key, value) = read_string_pair!(bytes);
             Ok(Some(Property::UserProperty(UserProperty(key, value))))
         },
-        39 => {
+        PropertyType::MaximumPacketSize => {
             let maximum_packet_size = read_u32!(bytes);
             Ok(Some(Property::MaximumPacketSize(MaximumPacketSize(maximum_packet_size))))
         },
-        40 => {
+        PropertyType::WildcardSubscriptionAvailable => {
             let wildcard_subscription_available = read_u8!(bytes);
             Ok(Some(Property::WildcardSubscriptionAvailable(WildcardSubscriptionAvailable(
                 wildcard_subscription_available,
             ))))
         },
-        41 => {
+        PropertyType::SubscriptionIdentifierAvailable => {
             let subscription_identifier_available = read_u8!(bytes);
             Ok(Some(Property::SubscriptionIdentifierAvailable(SubscriptionIdentifierAvailable(
                 subscription_identifier_available,
             ))))
         },
-        42 => {
+        PropertyType::SharedSubscriptionAvailable => {
             let shared_subscription_available = read_u8!(bytes);
             Ok(Some(Property::SharedSubscriptionAvailable(SharedSubscriptionAvailable(
                 shared_subscription_available,
             ))))
         },
-        _ => Err(DecodeError::InvalidPropertyId),
     }
 }
 
