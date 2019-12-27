@@ -58,6 +58,12 @@ trait PacketSize {
     fn calc_size(&self) -> u32;
 }
 
+impl PacketSize for u16 {
+    fn calc_size(&self) -> u32 {
+        2
+    }
+}
+
 impl PacketSize for VariableByteInt {
     fn calc_size(&self) -> u32 {
         match self.0 {
@@ -89,6 +95,18 @@ impl PacketSize for Vec<u8> {
 }
 
 impl PacketSize for Vec<UserProperty> {
+    fn calc_size(&self) -> u32 {
+        self.iter().map(|x| x.calc_size()).sum()
+    }
+}
+
+impl PacketSize for Vec<SubscriptionTopic> {
+    fn calc_size(&self) -> u32 {
+        self.iter().map(|x| x.calc_size()).sum()
+    }
+}
+
+impl PacketSize for Vec<String> {
     fn calc_size(&self) -> u32 {
         self.iter().map(|x| x.calc_size()).sum()
     }
@@ -632,6 +650,12 @@ pub struct SubscriptionTopic {
     pub retain_handling: RetainHandling,
 }
 
+impl PacketSize for SubscriptionTopic {
+    fn calc_size(&self) -> u32 {
+        self.topic.calc_size() + 1
+    }
+}
+
 // Control Packets
 #[derive(Debug)]
 pub struct ConnectPacket {
@@ -912,7 +936,7 @@ impl Packet {
 
 impl PacketSize for Packet {
     fn calc_size(&self) -> u32 {
-        let size = match self {
+        match self {
             Packet::Connect(p) => {
                 let mut size = p.protocol_name.calc_size();
 
@@ -966,12 +990,88 @@ impl PacketSize for Packet {
 
                 size
             },
-            Packet::Publish(_) => 0,
-            Packet::PublishAck(_) => 0,
-            Packet::PublishReceived(_) => 0,
-            Packet::PublishRelease(_) => 0,
-            Packet::PublishComplete(_) => 0,
-            Packet::Subscribe(_) => 0,
+            Packet::Publish(p) => {
+                let mut size = p.topic_name.calc_size();
+                size += p.packet_id.calc_size();
+
+                let mut property_size = 0;
+                property_size += p.payload_format_indicator.calc_size();
+                property_size += p.message_expiry_interval.calc_size();
+                property_size += p.topic_alias.calc_size();
+                property_size += p.response_topic.calc_size();
+                property_size += p.correlation_data.calc_size();
+                property_size += p.user_properties.calc_size();
+                property_size += p.subscription_identifier.calc_size();
+                property_size += p.content_type.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.payload.calc_size();
+
+                size
+            },
+            Packet::PublishAck(p) => {
+                // packet_id + reason_code
+                let mut size = 2 + 1;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::PublishReceived(p) => {
+                // packet_id + reason_code
+                let mut size = 2 + 1;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::PublishRelease(p) => {
+                // packet_id + reason_code
+                let mut size = 2 + 1;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::PublishComplete(p) => {
+                // packet_id + reason_code
+                let mut size = 2 + 1;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::Subscribe(p) => {
+                // packet_id
+                let mut size = 2;
+
+                let mut property_size = 0;
+                property_size += p.subscription_identifier.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.subscription_topics.calc_size();
+
+                size
+            },
             Packet::SubscribeAck(p) => {
                 // Packet id
                 let mut size = 2;
@@ -986,14 +1086,63 @@ impl PacketSize for Packet {
 
                 size
             },
-            Packet::Unsubscribe(_) => 0,
-            Packet::UnsubscribeAck(_) => 0,
+            Packet::Unsubscribe(p) => {
+                // Packet id
+                let mut size = 2;
+
+                let mut property_size = 0;
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.topics.calc_size();
+
+                size
+            },
+            Packet::UnsubscribeAck(p) => {
+                // Packet id
+                let mut size = 2;
+
+                let mut property_size = 0;
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size += p.reason_codes.len() as u32;
+
+                size
+            },
             Packet::PingRequest => 0,
             Packet::PingResponse => 0,
-            Packet::Disconnect(_) => 0,
-            Packet::Authenticate(_) => 0,
-        };
+            Packet::Disconnect(p) => {
+                // reason_code
+                let mut size = 1;
 
-        size
+                let mut property_size = 0;
+                property_size += p.session_expiry_interval.calc_size();
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+                property_size += p.server_reference.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+            Packet::Authenticate(p) => {
+                // reason_code
+                let mut size = 1;
+
+                let mut property_size = 0;
+                property_size += p.authentication_method.calc_size();
+                property_size += p.authentication_data.calc_size();
+                property_size += p.reason_string.calc_size();
+                property_size += p.user_properties.calc_size();
+
+                size += property_size + VariableByteInt(property_size).calc_size();
+
+                size
+            },
+        }
     }
 }
