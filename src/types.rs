@@ -46,6 +46,10 @@ impl VariableByteInt {
             }
         }
     }
+
+    pub fn calculate_size(&self) -> u32 {
+        self.calc_size()
+    }
 }
 
 impl From<std::io::Error> for DecodeError {

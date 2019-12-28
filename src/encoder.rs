@@ -2,7 +2,7 @@ use crate::types::{
     properties::*, AuthenticatePacket, ConnectAckPacket, ConnectPacket, DisconnectPacket, Encode,
     Packet, PropertySize, PublishAckPacket, PublishCompletePacket, PublishPacket,
     PublishReceivedPacket, PublishReleasePacket, SubscribeAckPacket, SubscribePacket,
-    UnsubscribeAckPacket, UnsubscribePacket,
+    UnsubscribeAckPacket, UnsubscribePacket, VariableByteInt,
 };
 use bytes::{BufMut, BytesMut};
 
@@ -469,15 +469,15 @@ fn encode_authenticate(packet: &AuthenticatePacket, bytes: &mut BytesMut) {
 }
 
 pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
-    // TODO - reserve the exact amount
-    // bytes.reserve(packet_size);
+    let remaining_length = packet.calculate_size();
+    let packet_size = 1 + VariableByteInt(remaining_length).calculate_size() + remaining_length;
+    bytes.reserve(packet_size as usize);
+
     let first_byte = packet.to_byte();
     let mut first_byte_val = (first_byte << 4) & 0b1111_0000;
     first_byte_val |= packet.fixed_header_flags();
 
     bytes.put_u8(first_byte_val);
-
-    let remaining_length = packet.calculate_size();
     encode_variable_int(remaining_length as u32, bytes);
 
     match packet {
