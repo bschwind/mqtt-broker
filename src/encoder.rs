@@ -1,3 +1,5 @@
+use crate::types::PublishAckPacket;
+use crate::types::PublishPacket;
 use crate::types::{
     properties::*, ConnectAckPacket, ConnectPacket, Encode, Packet, PropertySize,
     SubscribeAckPacket,
@@ -257,6 +259,57 @@ fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) {
 
     let property_length = packet.property_size();
     encode_variable_int(property_length, bytes);
+
+    packet.session_expiry_interval.encode(bytes);
+    packet.receive_maximum.encode(bytes);
+    packet.maximum_qos.encode(bytes);
+    packet.retain_available.encode(bytes);
+    packet.maximum_packet_size.encode(bytes);
+    packet.assigned_client_identifier.encode(bytes);
+    packet.topic_alias_maximum.encode(bytes);
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+    packet.wildcard_subscription_available.encode(bytes);
+    packet.subscription_identifiers_available.encode(bytes);
+    packet.shared_subscription_available.encode(bytes);
+    packet.server_keep_alive.encode(bytes);
+    packet.response_information.encode(bytes);
+    packet.server_reference.encode(bytes);
+    packet.authentication_method.encode(bytes);
+    packet.authentication_data.encode(bytes);
+}
+
+fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut) {
+    encode_string(&packet.topic_name, bytes);
+
+    if let Some(packet_id) = packet.packet_id {
+        bytes.put_u16(packet_id);
+    }
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.payload_format_indicator.encode(bytes);
+    packet.message_expiry_interval.encode(bytes);
+    packet.topic_alias.encode(bytes);
+    packet.response_topic.encode(bytes);
+    packet.correlation_data.encode(bytes);
+    packet.user_properties.encode(bytes);
+    packet.subscription_identifier.encode(bytes);
+    packet.content_type.encode(bytes);
+
+    encode_binary_data(&packet.payload, bytes);
+}
+
+fn encode_publish_ack(packet: &PublishAckPacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
 }
 
 fn encode_subscribe_ack(packet: &SubscribeAckPacket, bytes: &mut BytesMut) {
@@ -264,6 +317,9 @@ fn encode_subscribe_ack(packet: &SubscribeAckPacket, bytes: &mut BytesMut) {
 
     let property_length = packet.property_size();
     encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
 
     for code in &packet.reason_codes {
         bytes.put_u8((*code) as u8);
@@ -285,6 +341,8 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
     match packet {
         Packet::Connect(p) => encode_connect(p, bytes),
         Packet::ConnectAck(p) => encode_connect_ack(p, bytes),
+        Packet::Publish(p) => encode_publish(p, bytes),
+        Packet::PublishAck(p) => encode_publish_ack(p, bytes),
         Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes),
         _ => {},
     }

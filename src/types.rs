@@ -537,7 +537,7 @@ pub enum ConnectReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum PublishAckReason {
     Success = 0,
     NoMatchingSubscribers = 16,
