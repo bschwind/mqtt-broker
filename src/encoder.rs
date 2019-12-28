@@ -1,7 +1,8 @@
 use crate::types::{
-    properties::*, ConnectAckPacket, ConnectPacket, Encode, Packet, PropertySize, PublishAckPacket,
-    PublishCompletePacket, PublishPacket, PublishReceivedPacket, PublishReleasePacket,
-    SubscribeAckPacket, SubscribePacket,
+    properties::*, AuthenticatePacket, ConnectAckPacket, ConnectPacket, DisconnectPacket, Encode,
+    Packet, PropertySize, PublishAckPacket, PublishCompletePacket, PublishPacket,
+    PublishReceivedPacket, PublishReleasePacket, SubscribeAckPacket, SubscribePacket,
+    UnsubscribeAckPacket, UnsubscribePacket,
 };
 use bytes::{BufMut, BytesMut};
 
@@ -41,137 +42,164 @@ fn encode_binary_data(value: &[u8], bytes: &mut BytesMut) {
 
 impl Encode for PayloadFormatIndicator {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::PayloadFormatIndicator as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for MessageExpiryInterval {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::MessageExpiryInterval as u8);
         bytes.put_u32(self.0);
     }
 }
 impl Encode for ContentType {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ContentType as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for ResponseTopic {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ResponseTopic as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for CorrelationData {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::CorrelationData as u8);
         encode_binary_data(&self.0, bytes);
     }
 }
 impl Encode for SubscriptionIdentifier {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::SubscriptionIdentifier as u8);
         encode_variable_int((self.0).0, bytes);
     }
 }
 impl Encode for SessionExpiryInterval {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::SessionExpiryInterval as u8);
         bytes.put_u32(self.0);
     }
 }
 impl Encode for AssignedClientIdentifier {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::AssignedClientIdentifier as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for ServerKeepAlive {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ServerKeepAlive as u8);
         bytes.put_u16(self.0)
     }
 }
 impl Encode for AuthenticationMethod {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::AuthenticationMethod as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for AuthenticationData {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::AuthenticationData as u8);
         encode_binary_data(&self.0, bytes);
     }
 }
 impl Encode for RequestProblemInformation {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::RequestProblemInformation as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for WillDelayInterval {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::WillDelayInterval as u8);
         bytes.put_u32(self.0);
     }
 }
 impl Encode for RequestResponseInformation {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::RequestResponseInformation as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for ResponseInformation {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ResponseInformation as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for ServerReference {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ServerReference as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for ReasonString {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ReasonString as u8);
         encode_string(&self.0, bytes);
     }
 }
 impl Encode for ReceiveMaximum {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::ReceiveMaximum as u8);
         bytes.put_u16(self.0);
     }
 }
 impl Encode for TopicAliasMaximum {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::TopicAliasMaximum as u8);
         bytes.put_u16(self.0);
     }
 }
 impl Encode for TopicAlias {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::TopicAlias as u8);
         bytes.put_u16(self.0);
     }
 }
 impl Encode for MaximumQos {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::MaximumQos as u8);
         bytes.put_u8(self.0 as u8);
     }
 }
 impl Encode for RetainAvailable {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::RetainAvailable as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for UserProperty {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::UserProperty as u8);
         encode_string(&self.0, bytes);
         encode_string(&self.1, bytes);
     }
 }
 impl Encode for MaximumPacketSize {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::MaximumPacketSize as u8);
         bytes.put_u32(self.0);
     }
 }
 impl Encode for WildcardSubscriptionAvailable {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::WildcardSubscriptionAvailable as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for SubscriptionIdentifierAvailable {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::SubscriptionIdentifierAvailable as u8);
         bytes.put_u8(self.0);
     }
 }
 impl Encode for SharedSubscriptionAvailable {
     fn encode(&self, bytes: &mut BytesMut) {
+        bytes.put_u8(PropertyType::SharedSubscriptionAvailable as u8);
         bytes.put_u8(self.0);
     }
 }
@@ -389,6 +417,57 @@ fn encode_subscribe_ack(packet: &SubscribeAckPacket, bytes: &mut BytesMut) {
     }
 }
 
+fn encode_unsubscribe(packet: &UnsubscribePacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.user_properties.encode(bytes);
+
+    for topic in &packet.topics {
+        encode_string(topic, bytes);
+    }
+}
+
+fn encode_unsubscribe_ack(packet: &UnsubscribeAckPacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+
+    for code in &packet.reason_codes {
+        bytes.put_u8((*code) as u8);
+    }
+}
+
+fn encode_disconnect(packet: &DisconnectPacket, bytes: &mut BytesMut) {
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.session_expiry_interval.encode(bytes);
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+    packet.server_reference.encode(bytes);
+}
+
+fn encode_authenticate(packet: &AuthenticatePacket, bytes: &mut BytesMut) {
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.authentication_method.encode(bytes);
+    packet.authentication_data.encode(bytes);
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+}
+
 pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
     // TODO - reserve the exact amount
     // bytes.reserve(packet_size);
@@ -411,6 +490,11 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
         Packet::PublishComplete(p) => encode_publish_complete(p, bytes),
         Packet::Subscribe(p) => encode_subscribe(p, bytes),
         Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes),
-        _ => {},
+        Packet::Unsubscribe(p) => encode_unsubscribe(p, bytes),
+        Packet::UnsubscribeAck(p) => encode_unsubscribe_ack(p, bytes),
+        Packet::PingRequest => {},
+        Packet::PingResponse => {},
+        Packet::Disconnect(p) => encode_disconnect(p, bytes),
+        Packet::Authenticate(p) => encode_authenticate(p, bytes),
     }
 }

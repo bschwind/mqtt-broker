@@ -596,7 +596,7 @@ pub enum SubscribeAckReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum UnsubscribeAckReason {
     Success = 0,
     NoSubscriptionExisted = 17,
@@ -608,7 +608,7 @@ pub enum UnsubscribeAckReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum DisconnectReason {
     NormalDisconnection = 0,
     DisconnectWithWillMessage = 4,
@@ -642,7 +642,7 @@ pub enum DisconnectReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum AuthenticateReason {
     Success = 0,
     ContinueAuthentication = 24,
