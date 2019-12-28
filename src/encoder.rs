@@ -1,8 +1,7 @@
-use crate::types::PublishAckPacket;
-use crate::types::PublishPacket;
 use crate::types::{
-    properties::*, ConnectAckPacket, ConnectPacket, Encode, Packet, PropertySize,
-    SubscribeAckPacket,
+    properties::*, ConnectAckPacket, ConnectPacket, Encode, Packet, PropertySize, PublishAckPacket,
+    PublishCompletePacket, PublishPacket, PublishReceivedPacket, PublishReleasePacket,
+    SubscribeAckPacket, SubscribePacket,
 };
 use bytes::{BufMut, BytesMut};
 
@@ -312,6 +311,70 @@ fn encode_publish_ack(packet: &PublishAckPacket, bytes: &mut BytesMut) {
     packet.user_properties.encode(bytes);
 }
 
+fn encode_publish_received(packet: &PublishReceivedPacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+}
+
+fn encode_publish_release(packet: &PublishReleasePacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+}
+
+fn encode_publish_complete(packet: &PublishCompletePacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+    bytes.put_u8(packet.reason_code as u8);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.reason_string.encode(bytes);
+    packet.user_properties.encode(bytes);
+}
+
+fn encode_subscribe(packet: &SubscribePacket, bytes: &mut BytesMut) {
+    bytes.put_u16(packet.packet_id);
+
+    let property_length = packet.property_size();
+    encode_variable_int(property_length, bytes);
+
+    packet.subscription_identifier.encode(bytes);
+    packet.user_properties.encode(bytes);
+
+    for topic in &packet.subscription_topics {
+        encode_string(&topic.topic, bytes);
+
+        let mut options_byte = 0b0000_0000;
+        let retain_handling_byte = topic.retain_handling as u8;
+        options_byte |= (retain_handling_byte & 0b0000_0011) << 4;
+
+        if topic.retain_as_published {
+            options_byte |= 0b0000_1000;
+        }
+
+        if topic.no_local {
+            options_byte |= 0b0000_0100;
+        }
+
+        let qos_byte = topic.maximum_qos as u8;
+        options_byte |= qos_byte & 0b0000_0011;
+
+        bytes.put_u8(options_byte);
+    }
+}
+
 fn encode_subscribe_ack(packet: &SubscribeAckPacket, bytes: &mut BytesMut) {
     bytes.put_u16(packet.packet_id);
 
@@ -343,6 +406,10 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
         Packet::ConnectAck(p) => encode_connect_ack(p, bytes),
         Packet::Publish(p) => encode_publish(p, bytes),
         Packet::PublishAck(p) => encode_publish_ack(p, bytes),
+        Packet::PublishReceived(p) => encode_publish_received(p, bytes),
+        Packet::PublishRelease(p) => encode_publish_release(p, bytes),
+        Packet::PublishComplete(p) => encode_publish_complete(p, bytes),
+        Packet::Subscribe(p) => encode_subscribe(p, bytes),
         Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes),
         _ => {},
     }

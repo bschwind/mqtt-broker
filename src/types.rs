@@ -174,7 +174,7 @@ pub enum QoS {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum RetainHandling {
     SendAtSubscribeTime = 0,
     SendAtSubscribeTimeIfNonexistent = 1,
@@ -551,7 +551,7 @@ pub enum PublishAckReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum PublishReceivedReason {
     Success = 0,
     NoMatchingSubscribers = 16,
@@ -565,14 +565,14 @@ pub enum PublishReceivedReason {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum PublishReleaseReason {
     Success = 0,
     PacketIdentifierNotFound = 146,
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum PublishCompleteReason {
     Success = 0,
     PacketIdentifierNotFound = 146,
