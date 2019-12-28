@@ -58,6 +58,30 @@ trait PacketSize {
     fn calc_size(&self) -> u32;
 }
 
+pub trait PropertySize {
+    fn property_size(&self) -> u32;
+}
+
+pub trait Encode {
+    fn encode(&self, bytes: &mut BytesMut);
+}
+
+impl<T: Encode> Encode for Option<T> {
+    fn encode(&self, bytes: &mut BytesMut) {
+        if let Some(data) = self {
+            data.encode(bytes);
+        }
+    }
+}
+
+impl Encode for Vec<UserProperty> {
+    fn encode(&self, bytes: &mut BytesMut) {
+        for property in self {
+            property.encode(bytes);
+        }
+    }
+}
+
 impl PacketSize for u16 {
     fn calc_size(&self) -> u32 {
         2
@@ -180,6 +204,7 @@ pub mod properties {
             1 + 4
         }
     }
+
     #[derive(Debug)]
     pub struct ContentType(pub String);
     impl PacketSize for ContentType {
@@ -195,6 +220,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct CorrelationData(pub Vec<u8>);
     impl PacketSize for CorrelationData {
@@ -202,6 +228,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct SubscriptionIdentifier(pub VariableByteInt);
     impl PacketSize for SubscriptionIdentifier {
@@ -209,6 +236,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct SessionExpiryInterval(pub u32);
     impl PacketSize for SessionExpiryInterval {
@@ -216,6 +244,7 @@ pub mod properties {
             1 + 4
         }
     }
+
     #[derive(Debug)]
     pub struct AssignedClientIdentifier(pub String);
     impl PacketSize for AssignedClientIdentifier {
@@ -223,6 +252,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct ServerKeepAlive(pub u16);
     impl PacketSize for ServerKeepAlive {
@@ -230,6 +260,7 @@ pub mod properties {
             1 + 2
         }
     }
+
     #[derive(Debug)]
     pub struct AuthenticationMethod(pub String);
     impl PacketSize for AuthenticationMethod {
@@ -237,6 +268,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct AuthenticationData(pub Vec<u8>);
     impl PacketSize for AuthenticationData {
@@ -244,6 +276,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct RequestProblemInformation(pub u8);
     impl PacketSize for RequestProblemInformation {
@@ -251,6 +284,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct WillDelayInterval(pub u32);
     impl PacketSize for WillDelayInterval {
@@ -258,6 +292,7 @@ pub mod properties {
             1 + 4
         }
     }
+
     #[derive(Debug)]
     pub struct RequestResponseInformation(pub u8);
     impl PacketSize for RequestResponseInformation {
@@ -265,6 +300,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct ResponseInformation(pub String);
     impl PacketSize for ResponseInformation {
@@ -272,6 +308,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct ServerReference(pub String);
     impl PacketSize for ServerReference {
@@ -279,6 +316,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct ReasonString(pub String);
     impl PacketSize for ReasonString {
@@ -286,6 +324,7 @@ pub mod properties {
             1 + self.0.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct ReceiveMaximum(pub u16);
     impl PacketSize for ReceiveMaximum {
@@ -293,6 +332,7 @@ pub mod properties {
             1 + 2
         }
     }
+
     #[derive(Debug)]
     pub struct TopicAliasMaximum(pub u16);
     impl PacketSize for TopicAliasMaximum {
@@ -300,6 +340,7 @@ pub mod properties {
             1 + 2
         }
     }
+
     #[derive(Debug)]
     pub struct TopicAlias(pub u16);
     impl PacketSize for TopicAlias {
@@ -307,6 +348,7 @@ pub mod properties {
             1 + 2
         }
     }
+
     #[derive(Debug)]
     pub struct MaximumQos(pub QoS);
     impl PacketSize for MaximumQos {
@@ -314,6 +356,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct RetainAvailable(pub u8);
     impl PacketSize for RetainAvailable {
@@ -321,6 +364,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct UserProperty(pub String, pub String);
     impl PacketSize for UserProperty {
@@ -328,6 +372,7 @@ pub mod properties {
             1 + self.0.calc_size() + self.1.calc_size()
         }
     }
+
     #[derive(Debug)]
     pub struct MaximumPacketSize(pub u32);
     impl PacketSize for MaximumPacketSize {
@@ -335,6 +380,7 @@ pub mod properties {
             1 + 4
         }
     }
+
     #[derive(Debug)]
     pub struct WildcardSubscriptionAvailable(pub u8);
     impl PacketSize for WildcardSubscriptionAvailable {
@@ -342,6 +388,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct SubscriptionIdentifierAvailable(pub u8);
     impl PacketSize for SubscriptionIdentifierAvailable {
@@ -349,6 +396,7 @@ pub mod properties {
             1 + 1
         }
     }
+
     #[derive(Debug)]
     pub struct SharedSubscriptionAvailable(pub u8);
     impl PacketSize for SharedSubscriptionAvailable {
@@ -462,7 +510,7 @@ pub mod properties {
 }
 
 #[repr(u8)]
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, TryFromPrimitive)]
 pub enum ConnectReason {
     Success = 0,
     UnspecifiedError = 128,
@@ -626,6 +674,15 @@ impl PacketSize for FinalWill {
         size += self.topic.calc_size();
         size += self.payload.calc_size();
 
+        let property_size = self.property_size();
+        size += property_size + VariableByteInt(property_size).calc_size();
+
+        size
+    }
+}
+
+impl PropertySize for FinalWill {
+    fn property_size(&self) -> u32 {
         let mut property_size = 0;
         property_size += self.will_delay_interval.calc_size();
         property_size += self.payload_format_indicator.calc_size();
@@ -635,9 +692,7 @@ impl PacketSize for FinalWill {
         property_size += self.correlation_data.calc_size();
         property_size += self.user_properties.calc_size();
 
-        size += property_size + VariableByteInt(property_size).calc_size();
-
-        size
+        property_size
     }
 }
 
@@ -683,6 +738,23 @@ pub struct ConnectPacket {
     pub password: Option<String>,
 }
 
+impl PropertySize for ConnectPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.session_expiry_interval.calc_size();
+        property_size += self.receive_maximum.calc_size();
+        property_size += self.maximum_packet_size.calc_size();
+        property_size += self.topic_alias_maximum.calc_size();
+        property_size += self.request_response_information.calc_size();
+        property_size += self.request_problem_information.calc_size();
+        property_size += self.user_properties.calc_size();
+        property_size += self.authentication_method.calc_size();
+        property_size += self.authentication_data.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct ConnectAckPacket {
     // Variable header
@@ -707,6 +779,31 @@ pub struct ConnectAckPacket {
     pub server_reference: Option<ServerReference>,
     pub authentication_method: Option<AuthenticationMethod>,
     pub authentication_data: Option<AuthenticationData>,
+}
+
+impl PropertySize for ConnectAckPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.session_expiry_interval.calc_size();
+        property_size += self.receive_maximum.calc_size();
+        property_size += self.maximum_qos.calc_size();
+        property_size += self.retain_available.calc_size();
+        property_size += self.maximum_packet_size.calc_size();
+        property_size += self.assigned_client_identifier.calc_size();
+        property_size += self.topic_alias_maximum.calc_size();
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+        property_size += self.wildcard_subscription_available.calc_size();
+        property_size += self.subscription_identifiers_available.calc_size();
+        property_size += self.shared_subscription_available.calc_size();
+        property_size += self.server_keep_alive.calc_size();
+        property_size += self.response_information.calc_size();
+        property_size += self.server_reference.calc_size();
+        property_size += self.authentication_method.calc_size();
+        property_size += self.authentication_data.calc_size();
+
+        property_size
+    }
 }
 
 #[derive(Debug)]
@@ -734,6 +831,22 @@ pub struct PublishPacket {
     pub payload: Vec<u8>,
 }
 
+impl PropertySize for PublishPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.payload_format_indicator.calc_size();
+        property_size += self.message_expiry_interval.calc_size();
+        property_size += self.topic_alias.calc_size();
+        property_size += self.response_topic.calc_size();
+        property_size += self.correlation_data.calc_size();
+        property_size += self.user_properties.calc_size();
+        property_size += self.subscription_identifier.calc_size();
+        property_size += self.content_type.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct PublishAckPacket {
     // Variable header
@@ -743,6 +856,16 @@ pub struct PublishAckPacket {
     // Properties
     pub reason_string: Option<ReasonString>,
     pub user_properties: Vec<UserProperty>,
+}
+
+impl PropertySize for PublishAckPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
 }
 
 #[derive(Debug)]
@@ -756,6 +879,16 @@ pub struct PublishReceivedPacket {
     pub user_properties: Vec<UserProperty>,
 }
 
+impl PropertySize for PublishReceivedPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct PublishReleasePacket {
     // Variable header
@@ -767,6 +900,16 @@ pub struct PublishReleasePacket {
     pub user_properties: Vec<UserProperty>,
 }
 
+impl PropertySize for PublishReleasePacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct PublishCompletePacket {
     // Variable header
@@ -776,6 +919,16 @@ pub struct PublishCompletePacket {
     // Properties
     pub reason_string: Option<ReasonString>,
     pub user_properties: Vec<UserProperty>,
+}
+
+impl PropertySize for PublishCompletePacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
 }
 
 #[derive(Debug)]
@@ -791,6 +944,16 @@ pub struct SubscribePacket {
     pub subscription_topics: Vec<SubscriptionTopic>,
 }
 
+impl PropertySize for SubscribePacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.subscription_identifier.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct SubscribeAckPacket {
     // Variable header
@@ -804,6 +967,16 @@ pub struct SubscribeAckPacket {
     pub reason_codes: Vec<SubscribeAckReason>,
 }
 
+impl PropertySize for SubscribeAckPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct UnsubscribePacket {
     // Variable header
@@ -814,6 +987,15 @@ pub struct UnsubscribePacket {
 
     // Payload
     pub topics: Vec<String>,
+}
+
+impl PropertySize for UnsubscribePacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
 }
 
 #[derive(Debug)]
@@ -829,6 +1011,16 @@ pub struct UnsubscribeAckPacket {
     pub reason_codes: Vec<UnsubscribeAckReason>,
 }
 
+impl PropertySize for UnsubscribeAckPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct DisconnectPacket {
     // Variable header
@@ -841,6 +1033,18 @@ pub struct DisconnectPacket {
     pub server_reference: Option<ServerReference>,
 }
 
+impl PropertySize for DisconnectPacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.session_expiry_interval.calc_size();
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+        property_size += self.server_reference.calc_size();
+
+        property_size
+    }
+}
+
 #[derive(Debug)]
 pub struct AuthenticatePacket {
     // Variable header
@@ -851,6 +1055,18 @@ pub struct AuthenticatePacket {
     pub authentication_data: Option<AuthenticationData>,
     pub reason_string: Option<ReasonString>,
     pub user_properties: Vec<UserProperty>,
+}
+
+impl PropertySize for AuthenticatePacket {
+    fn property_size(&self) -> u32 {
+        let mut property_size = 0;
+        property_size += self.authentication_method.calc_size();
+        property_size += self.authentication_data.calc_size();
+        property_size += self.reason_string.calc_size();
+        property_size += self.user_properties.calc_size();
+
+        property_size
+    }
 }
 
 #[derive(Debug)]
@@ -943,17 +1159,7 @@ impl PacketSize for Packet {
                 // Protocol level + connect flags + keep-alive
                 size += 1 + 1 + 2;
 
-                let mut property_size = 0;
-                property_size += p.session_expiry_interval.calc_size();
-                property_size += p.receive_maximum.calc_size();
-                property_size += p.maximum_packet_size.calc_size();
-                property_size += p.topic_alias_maximum.calc_size();
-                property_size += p.request_response_information.calc_size();
-                property_size += p.request_problem_information.calc_size();
-                property_size += p.user_properties.calc_size();
-                property_size += p.authentication_method.calc_size();
-                property_size += p.authentication_data.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.client_id.calc_size();
@@ -967,25 +1173,7 @@ impl PacketSize for Packet {
                 // flags + reason code
                 let mut size = 1 + 1;
 
-                let mut property_size = 0;
-                property_size += p.session_expiry_interval.calc_size();
-                property_size += p.receive_maximum.calc_size();
-                property_size += p.maximum_qos.calc_size();
-                property_size += p.retain_available.calc_size();
-                property_size += p.maximum_packet_size.calc_size();
-                property_size += p.assigned_client_identifier.calc_size();
-                property_size += p.topic_alias_maximum.calc_size();
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-                property_size += p.wildcard_subscription_available.calc_size();
-                property_size += p.subscription_identifiers_available.calc_size();
-                property_size += p.shared_subscription_available.calc_size();
-                property_size += p.server_keep_alive.calc_size();
-                property_size += p.response_information.calc_size();
-                property_size += p.server_reference.calc_size();
-                property_size += p.authentication_method.calc_size();
-                property_size += p.authentication_data.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -994,16 +1182,7 @@ impl PacketSize for Packet {
                 let mut size = p.topic_name.calc_size();
                 size += p.packet_id.calc_size();
 
-                let mut property_size = 0;
-                property_size += p.payload_format_indicator.calc_size();
-                property_size += p.message_expiry_interval.calc_size();
-                property_size += p.topic_alias.calc_size();
-                property_size += p.response_topic.calc_size();
-                property_size += p.correlation_data.calc_size();
-                property_size += p.user_properties.calc_size();
-                property_size += p.subscription_identifier.calc_size();
-                property_size += p.content_type.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.payload.calc_size();
@@ -1014,10 +1193,7 @@ impl PacketSize for Packet {
                 // packet_id + reason_code
                 let mut size = 2 + 1;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -1026,10 +1202,7 @@ impl PacketSize for Packet {
                 // packet_id + reason_code
                 let mut size = 2 + 1;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -1038,10 +1211,7 @@ impl PacketSize for Packet {
                 // packet_id + reason_code
                 let mut size = 2 + 1;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -1050,10 +1220,7 @@ impl PacketSize for Packet {
                 // packet_id + reason_code
                 let mut size = 2 + 1;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -1062,10 +1229,7 @@ impl PacketSize for Packet {
                 // packet_id
                 let mut size = 2;
 
-                let mut property_size = 0;
-                property_size += p.subscription_identifier.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.subscription_topics.calc_size();
@@ -1076,10 +1240,7 @@ impl PacketSize for Packet {
                 // Packet id
                 let mut size = 2;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.reason_codes.len() as u32;
@@ -1090,9 +1251,7 @@ impl PacketSize for Packet {
                 // Packet id
                 let mut size = 2;
 
-                let mut property_size = 0;
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.topics.calc_size();
@@ -1103,10 +1262,7 @@ impl PacketSize for Packet {
                 // Packet id
                 let mut size = 2;
 
-                let mut property_size = 0;
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size += p.reason_codes.len() as u32;
@@ -1119,12 +1275,7 @@ impl PacketSize for Packet {
                 // reason_code
                 let mut size = 1;
 
-                let mut property_size = 0;
-                property_size += p.session_expiry_interval.calc_size();
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-                property_size += p.server_reference.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size
@@ -1133,12 +1284,7 @@ impl PacketSize for Packet {
                 // reason_code
                 let mut size = 1;
 
-                let mut property_size = 0;
-                property_size += p.authentication_method.calc_size();
-                property_size += p.authentication_data.calc_size();
-                property_size += p.reason_string.calc_size();
-                property_size += p.user_properties.calc_size();
-
+                let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
                 size

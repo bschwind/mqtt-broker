@@ -36,7 +36,7 @@ impl Encoder for MqttCodec {
     type Item = Packet;
 
     fn encode(&mut self, packet: Self::Item, bytes: &mut BytesMut) -> Result<(), DecodeError> {
-        encoder::encode_mqtt(&packet, bytes)?;
+        encoder::encode_mqtt(&packet, bytes);
         Ok(())
     }
 }
