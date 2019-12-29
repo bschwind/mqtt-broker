@@ -498,3 +498,48 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
         Packet::Authenticate(p) => encode_authenticate(p, bytes),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        decoder::decode_mqtt,
+        encoder::encode_mqtt,
+        types::{ConnectPacket, Packet},
+    };
+    use bytes::BytesMut;
+
+    #[test]
+    fn encode_connect() {
+        let connect_packet = Packet::Connect(ConnectPacket {
+            protocol_name: "MQTT".to_string(),
+            protocol_level: 5,
+            clean_start: true,
+            keep_alive: 200,
+
+            session_expiry_interval: None,
+            receive_maximum: None,
+            maximum_packet_size: None,
+            topic_alias_maximum: None,
+            request_response_information: None,
+            request_problem_information: None,
+            user_properties: vec![],
+            authentication_method: None,
+            authentication_data: None,
+
+            client_id: "test_client".to_string(),
+            will: None,
+            user_name: None,
+            password: None,
+        });
+
+        let mut bytes = BytesMut::new();
+
+        encode_mqtt(&connect_packet, &mut bytes);
+
+        let decoded = decode_mqtt(&mut bytes);
+
+        println!("decoded: {:#?}", decoded);
+
+        // TODO - assert connect_packet and decoded are equal
+    }
+}
