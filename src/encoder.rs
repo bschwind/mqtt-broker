@@ -325,7 +325,7 @@ fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut) {
     packet.subscription_identifier.encode(bytes);
     packet.content_type.encode(bytes);
 
-    encode_binary_data(&packet.payload, bytes);
+    bytes.put_slice(&packet.payload);
 }
 
 fn encode_publish_ack(packet: &PublishAckPacket, bytes: &mut BytesMut) {
@@ -501,16 +501,12 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        decoder::decode_mqtt,
-        encoder::encode_mqtt,
-        types::{ConnectPacket, Packet},
-    };
+    use crate::{decoder::*, encoder::*, types::*};
     use bytes::BytesMut;
 
     #[test]
-    fn encode_connect() {
-        let connect_packet = Packet::Connect(ConnectPacket {
+    fn connect_roundtrip() {
+        let packet = Packet::Connect(ConnectPacket {
             protocol_name: "MQTT".to_string(),
             protocol_level: 5,
             clean_start: true,
@@ -533,13 +529,72 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
 
-        encode_mqtt(&connect_packet, &mut bytes);
+        assert_eq!(packet, decoded);
+    }
 
-        let decoded = decode_mqtt(&mut bytes);
+    #[test]
+    fn connect_ack_roundtrip() {
+        let packet = Packet::ConnectAck(ConnectAckPacket {
+            session_present: false,
+            reason_code: ConnectReason::Success,
 
-        println!("decoded: {:#?}", decoded);
+            session_expiry_interval: None,
+            receive_maximum: None,
+            maximum_qos: None,
+            retain_available: None,
+            maximum_packet_size: None,
+            assigned_client_identifier: None,
+            topic_alias_maximum: None,
+            reason_string: None,
+            user_properties: vec![],
+            wildcard_subscription_available: None,
+            subscription_identifiers_available: None,
+            shared_subscription_available: None,
+            server_keep_alive: None,
+            response_information: None,
+            server_reference: None,
+            authentication_method: None,
+            authentication_data: None,
+        });
 
-        // TODO - assert connect_packet and decoded are equal
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn publish_roundtrip() {
+        let packet = Packet::Publish(PublishPacket {
+            is_duplicate: false,
+            qos: QoS::AtLeastOnce,
+            retain: false,
+
+            topic_name: "test_topic".to_string(),
+            packet_id: Some(42),
+
+            // Properties
+            payload_format_indicator: None,
+            message_expiry_interval: None,
+            topic_alias: None,
+            response_topic: None,
+            correlation_data: None,
+            user_properties: vec![],
+            subscription_identifier: None,
+            content_type: None,
+
+            // Payload
+            payload: vec![22; 100],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
     }
 }
