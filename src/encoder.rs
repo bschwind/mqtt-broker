@@ -577,7 +577,6 @@ mod tests {
             topic_name: "test_topic".to_string(),
             packet_id: Some(42),
 
-            // Properties
             payload_format_indicator: None,
             message_expiry_interval: None,
             topic_alias: None,
@@ -587,10 +586,208 @@ mod tests {
             subscription_identifier: None,
             content_type: None,
 
-            // Payload
             payload: vec![22; 100],
         });
 
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn publish_ack_roundtrip() {
+        let packet = Packet::PublishAck(PublishAckPacket {
+            packet_id: 1500,
+            reason_code: PublishAckReason::Success,
+
+            reason_string: None,
+            user_properties: vec![],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn publish_received_roundtrip() {
+        let packet = Packet::PublishReceived(PublishReceivedPacket {
+            packet_id: 1500,
+            reason_code: PublishReceivedReason::Success,
+
+            reason_string: None,
+            user_properties: vec![],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn publish_release_roundtrip() {
+        let packet = Packet::PublishRelease(PublishReleasePacket {
+            packet_id: 1500,
+            reason_code: PublishReleaseReason::Success,
+
+            reason_string: None,
+            user_properties: vec![],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn publish_complete_roundtrip() {
+        let packet = Packet::PublishComplete(PublishCompletePacket {
+            packet_id: 1500,
+            reason_code: PublishCompleteReason::Success,
+
+            reason_string: None,
+            user_properties: vec![],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn subscribe_roundtrip() {
+        let packet = Packet::Subscribe(SubscribePacket {
+            packet_id: 4500,
+
+            subscription_identifier: None,
+            user_properties: vec![],
+
+            subscription_topics: vec![SubscriptionTopic {
+                topic: "test_topic".to_string(),
+                maximum_qos: QoS::AtLeastOnce,
+                no_local: false,
+                retain_as_published: false,
+                retain_handling: RetainHandling::SendAtSubscribeTime,
+            }],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn subscribe_ack_roundtrip() {
+        let packet = Packet::SubscribeAck(SubscribeAckPacket {
+            packet_id: 1234,
+
+            reason_string: None,
+            user_properties: vec![],
+
+            reason_codes: vec![SubscribeAckReason::GrantedQoSZero],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn unsubscribe_roundtrip() {
+        let packet = Packet::Unsubscribe(UnsubscribePacket {
+            packet_id: 1234,
+
+            user_properties: vec![],
+
+            topics: vec!["test_topic".to_string()],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn unsubscribe_ack_roundtrip() {
+        let packet = Packet::UnsubscribeAck(UnsubscribeAckPacket {
+            packet_id: 4321,
+
+            reason_string: None,
+            user_properties: vec![],
+
+            reason_codes: vec![UnsubscribeAckReason::Success],
+        });
+
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn ping_request_roundtrip() {
+        let packet = Packet::PingRequest;
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn ping_response_roundtrip() {
+        let packet = Packet::PingResponse;
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn disconnect_roundtrip() {
+        let packet = Packet::Disconnect(DisconnectPacket {
+            reason_code: DisconnectReason::NormalDisconnection,
+
+            session_expiry_interval: None,
+            reason_string: None,
+            user_properties: vec![],
+            server_reference: None,
+        });
+        let mut bytes = BytesMut::new();
+        encode_mqtt(&packet, &mut bytes);
+        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+
+        assert_eq!(packet, decoded);
+    }
+
+    #[test]
+    fn authenticate_roundtrip() {
+        let packet = Packet::Authenticate(AuthenticatePacket {
+            reason_code: AuthenticateReason::Success,
+
+            authentication_method: None,
+            authentication_data: None,
+            reason_string: None,
+            user_properties: vec![],
+        });
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
         let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
