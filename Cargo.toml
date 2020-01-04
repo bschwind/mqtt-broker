@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bytes = "0.5.0"
-tokio = { version = "0.2", features = ["tcp", "dns", "rt-threaded"] }
+tokio = { version = "0.2", features = ["tcp", "dns", "rt-threaded", "sync", "time"] }
 tokio-util = { version = "0.2", features = ["codec"] }
 futures = "0.3"
 num_enum = "0.4"

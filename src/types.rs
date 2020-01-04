@@ -1,6 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -22,6 +23,13 @@ pub enum DecodeError {
     InvalidPropertyId,
     InvalidPropertyForPacket,
     Io(std::io::Error),
+}
+
+#[derive(Debug)]
+pub enum ProtocolError {
+    MalformedPacket(DecodeError),
+    ConnectTimedOut,
+    FirstPacketNotConnect,
 }
 
 #[derive(Debug, PartialEq)]
@@ -707,6 +715,15 @@ pub struct SubscriptionTopic {
     pub no_local: bool,
     pub retain_as_published: bool,
     pub retain_handling: RetainHandling,
+}
+
+impl Hash for SubscriptionTopic {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        &self.topic.hash(state);
+    }
 }
 
 impl PacketSize for SubscriptionTopic {
