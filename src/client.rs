@@ -1,6 +1,6 @@
 use crate::{
     broker::BrokerMessage,
-    types::{ConnectAckPacket, Packet, ProtocolError, SubscribeAckPacket},
+    types::{ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, SubscribeAckPacket},
     MqttCodec,
 };
 use futures::{
@@ -43,14 +43,22 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
                     connect_packet.client_id
                 };
 
+                let protocol_version = connect_packet.protocol_version;
                 let self_tx = sender.clone();
 
                 self.broker_tx
-                    .send(BrokerMessage::NewClient(client_id.clone(), sender))
+                    .send(BrokerMessage::NewClient(client_id.clone(), protocol_version, sender))
                     .await
                     .expect("Couldn't send NewClient message to broker");
 
-                Ok(Client::new(client_id, self.framed_stream, self.broker_tx, receiver, self_tx))
+                Ok(Client::new(
+                    client_id,
+                    protocol_version,
+                    self.framed_stream,
+                    self.broker_tx,
+                    receiver,
+                    self_tx,
+                ))
             },
             Some(Ok(_)) => Err(ProtocolError::FirstPacketNotConnect),
             Some(Err(e)) => Err(ProtocolError::MalformedPacket(e)),
@@ -71,6 +79,7 @@ pub enum ClientMessage {
 
 pub struct Client<T: AsyncRead + AsyncWrite + Unpin> {
     id: String,
+    protocol_version: ProtocolVersion,
     framed_stream: Framed<T, MqttCodec>,
     broker_tx: Sender<BrokerMessage>,
     broker_rx: Receiver<ClientMessage>,
@@ -80,12 +89,13 @@ pub struct Client<T: AsyncRead + AsyncWrite + Unpin> {
 impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
     pub fn new(
         id: String,
+        protocol_version: ProtocolVersion,
         framed_stream: Framed<T, MqttCodec>,
         broker_tx: Sender<BrokerMessage>,
         broker_rx: Receiver<ClientMessage>,
         self_tx: Sender<ClientMessage>,
     ) -> Self {
-        Self { id, framed_stream, broker_tx, broker_rx, self_tx }
+        Self { id, protocol_version, framed_stream, broker_tx, broker_rx, self_tx }
     }
 
     async fn handle_socket_reads(

@@ -206,7 +206,7 @@ impl Encode for SharedSubscriptionAvailable {
 
 fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut) {
     encode_string(&packet.protocol_name, bytes);
-    bytes.put_u8(packet.protocol_level);
+    bytes.put_u8(packet.protocol_version as u8);
 
     let mut connect_flags: u8 = 0b0000_0000;
 
@@ -508,7 +508,7 @@ mod tests {
     fn connect_roundtrip() {
         let packet = Packet::Connect(ConnectPacket {
             protocol_name: "MQTT".to_string(),
-            protocol_level: 5,
+            protocol_version: ProtocolVersion::V500,
             clean_start: true,
             keep_alive: 200,
 
@@ -530,7 +530,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -562,7 +562,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -591,7 +591,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -608,7 +608,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -625,7 +625,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -642,7 +642,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -659,7 +659,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -683,7 +683,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -701,7 +701,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -718,7 +718,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -736,7 +736,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -746,7 +746,7 @@ mod tests {
         let packet = Packet::PingRequest;
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -756,7 +756,7 @@ mod tests {
         let packet = Packet::PingResponse;
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -773,7 +773,7 @@ mod tests {
         });
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -790,7 +790,7 @@ mod tests {
         });
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }

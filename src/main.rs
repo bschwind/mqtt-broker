@@ -1,7 +1,7 @@
 use crate::{
     broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
-    types::{DecodeError, Packet},
+    types::{DecodeError, Packet, ProtocolVersion},
 };
 use bytes::BytesMut;
 use tokio::{
@@ -17,11 +17,29 @@ mod decoder;
 mod encoder;
 mod types;
 
-pub struct MqttCodec;
+pub struct MqttCodec {
+    version: ProtocolVersion,
+}
 
 impl MqttCodec {
     pub fn new() -> Self {
-        MqttCodec {}
+        MqttCodec { version: ProtocolVersion::V311 }
+    }
+
+    pub fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Packet>, DecodeError> {
+        // TODO - Ideally we should keep a state machine to store the data we've read so far.
+        let packet = decoder::decode_mqtt(buf, &self.version);
+
+        if let Ok(Some(Packet::Connect(packet))) = &packet {
+            self.version = packet.protocol_version;
+        }
+
+        packet
+    }
+
+    pub fn encode(&mut self, packet: Packet, bytes: &mut BytesMut) -> Result<(), DecodeError> {
+        encoder::encode_mqtt(&packet, bytes);
+        Ok(())
     }
 }
 
@@ -31,7 +49,7 @@ impl Decoder for MqttCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         // TODO - Ideally we should keep a state machine to store the data we've read so far.
-        decoder::decode_mqtt(buf)
+        self.decode(buf)
     }
 }
 
@@ -40,8 +58,7 @@ impl Encoder for MqttCodec {
     type Item = Packet;
 
     fn encode(&mut self, packet: Self::Item, bytes: &mut BytesMut) -> Result<(), DecodeError> {
-        encoder::encode_mqtt(&packet, bytes);
-        Ok(())
+        self.encode(packet, bytes)
     }
 }
 

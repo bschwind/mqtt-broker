@@ -5,6 +5,7 @@ use properties::*;
 #[derive(Debug)]
 pub enum DecodeError {
     InvalidPacketType,
+    InvalidProtocolVersion,
     InvalidRemainingLength,
     PacketTooLarge,
     InvalidUtf8,
@@ -29,6 +30,13 @@ pub enum ProtocolError {
     MalformedPacket(DecodeError),
     ConnectTimedOut,
     FirstPacketNotConnect,
+}
+
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
+pub enum ProtocolVersion {
+    V311 = 4,
+    V500 = 5,
 }
 
 #[derive(Debug, PartialEq)]
@@ -727,7 +735,7 @@ impl PacketSize for SubscriptionTopic {
 pub struct ConnectPacket {
     // Variable Header
     pub protocol_name: String,
-    pub protocol_level: u8,
+    pub protocol_version: ProtocolVersion,
     pub clean_start: bool,
     pub keep_alive: u16,
 
