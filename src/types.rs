@@ -1,7 +1,6 @@
 use bytes::{BufMut, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -178,7 +177,7 @@ pub enum PacketType {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TryFromPrimitive)]
 pub enum QoS {
     AtMostOnce = 0,  // QoS 0
     AtLeastOnce = 1, // QoS 1
@@ -186,7 +185,7 @@ pub enum QoS {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, TryFromPrimitive)]
 pub enum RetainHandling {
     SendAtSubscribeTime = 0,
     SendAtSubscribeTimeIfNonexistent = 1,
@@ -708,22 +707,13 @@ impl PropertySize for FinalWill {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct SubscriptionTopic {
     pub topic: String,
     pub maximum_qos: QoS,
     pub no_local: bool,
     pub retain_as_published: bool,
     pub retain_handling: RetainHandling,
-}
-
-impl Hash for SubscriptionTopic {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        &self.topic.hash(state);
-    }
 }
 
 impl PacketSize for SubscriptionTopic {

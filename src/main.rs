@@ -1,5 +1,5 @@
 use crate::{
-    broker::Broker,
+    broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
     types::{DecodeError, Packet},
 };
@@ -45,11 +45,11 @@ impl Encoder for MqttCodec {
     }
 }
 
-async fn client_handler(stream: TcpStream, mut _broker_tx: Sender<Packet>) {
+async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     println!("Handling a client");
 
     let framed_sock = Framed::new(stream, MqttCodec::new());
-    let unconnected_client = UnconnectedClient::new(framed_sock);
+    let unconnected_client = UnconnectedClient::new(framed_sock, broker_tx);
 
     let connected_client = match unconnected_client.handshake().await {
         Ok(connected_client) => connected_client,
@@ -59,39 +59,7 @@ async fn client_handler(stream: TcpStream, mut _broker_tx: Sender<Packet>) {
         },
     };
 
-    // TODO - use connected_client for broker logic
-
-    // while let Some(frame) = framed_sock.next().await {
-    //     match frame {
-    //         Ok(frame) => {
-    //             println!("Got a frame: {:#?}", frame);
-
-    //             if let Packet::Subscribe(packet) = &frame {
-    //                 let subscribe_ack = SubscribeAckPacket {
-    //                     packet_id: packet.packet_id,
-    //                     reason_string: None,
-    //                     user_properties: vec![],
-    //                     reason_codes: packet
-    //                         .subscription_topics
-    //                         .iter()
-    //                         .map(|_| SubscribeAckReason::GrantedQoSOne)
-    //                         .collect(),
-    //                 };
-
-    //                 framed_sock
-    //                     .send(Packet::SubscribeAck(subscribe_ack))
-    //                     .await
-    //                     .expect("Couldn't forward packet to framed socket");
-    //             }
-
-    //             broker_tx.send(frame).await;
-    //         },
-    //         Err(err) => {
-    //             println!("Error while reading frame: {:?}", err);
-    //             break;
-    //         },
-    //     }
-    // }
+    connected_client.run().await;
 
     println!("Client disconnected");
 }
