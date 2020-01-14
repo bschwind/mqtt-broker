@@ -15,6 +15,7 @@ mod broker;
 mod client;
 mod decoder;
 mod encoder;
+mod topic;
 mod types;
 
 pub struct MqttCodec {
