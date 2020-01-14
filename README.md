@@ -1,7 +1,7 @@
 mqtt-broker
 ===========
 
-A tokio-based MQTT broker written in Rust.
+A tokio-based MQTT v5 broker written in Rust.
 
 Dependencies
 ------------
