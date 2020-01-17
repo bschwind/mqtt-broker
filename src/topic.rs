@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 #[derive(Debug)]
 pub struct SubscriptionTrie<T> {
@@ -11,7 +11,7 @@ pub struct SubscriptionTrie<T> {
 // TODO(bschwind) - All these topic strings need validation before
 //                  operating on them.
 
-impl<T> SubscriptionTrie<T> {
+impl<T: std::fmt::Debug + PartialEq> SubscriptionTrie<T> {
     pub fn new() -> Self {
         Self {
             subscribers: Vec::new(),
@@ -19,6 +19,13 @@ impl<T> SubscriptionTrie<T> {
             multi_level_wildcards: Vec::new(),
             concrete_topic_levels: HashMap::new(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.subscribers.is_empty()
+            && self.single_level_wildcards.is_none()
+            && self.multi_level_wildcards.is_empty()
+            && self.concrete_topic_levels.is_empty();
     }
 
     pub fn insert(&mut self, topic_filter: String, value: T) {
@@ -66,6 +73,95 @@ impl<T> SubscriptionTrie<T> {
         } else {
             current_trie.subscribers.push(value);
         }
+    }
+
+    pub fn remove(&mut self, topic_filter: String, value: T) -> Option<T> {
+        let mut current_trie = self;
+        let mut stack: Vec<(*mut SubscriptionTrie<T>, usize)> = vec![];
+
+        let levels: Vec<&str> = topic_filter.split("/").collect();
+        let mut level_index = 0;
+
+        for level in &levels {
+            match *level {
+                "+" => {
+                    if current_trie.single_level_wildcards.is_some() {
+                        stack.push((&mut *current_trie, level_index));
+                        level_index += 1;
+
+                        current_trie = current_trie.single_level_wildcards.as_mut().unwrap();
+                    } else {
+                        return None;
+                    }
+                },
+                "#" => {
+                    break;
+                },
+                concrete_topic_level => {
+                    if current_trie.concrete_topic_levels.contains_key(concrete_topic_level) {
+                        stack.push((&mut *current_trie, level_index));
+                        level_index += 1;
+
+                        current_trie = current_trie
+                            .concrete_topic_levels
+                            .get_mut(concrete_topic_level)
+                            .unwrap();
+                    } else {
+                        return None;
+                    }
+                },
+            }
+        }
+
+        // Get the return value
+        let return_val = {
+            let level = &levels[levels.len() - 1];
+
+            if *level == "#" {
+                if let Some(pos) =
+                    current_trie.multi_level_wildcards.iter().position(|x| *x == value)
+                {
+                    Some(current_trie.multi_level_wildcards.remove(pos))
+                } else {
+                    None
+                }
+            } else {
+                if let Some(pos) = current_trie.subscribers.iter().position(|x| *x == value) {
+                    Some(current_trie.subscribers.remove(pos))
+                } else {
+                    None
+                }
+            }
+        };
+
+        // Go up the stack, cleaning up empty nodes
+        while let Some((stack_val, level_index)) = stack.pop() {
+            let mut trie = unsafe { &mut *stack_val };
+
+            let level = levels[level_index];
+
+            match level {
+                "+" => {
+                    if trie.single_level_wildcards.as_ref().map(|t| t.is_empty()).unwrap_or(false) {
+                        trie.single_level_wildcards = None;
+                    }
+                },
+                "#" => {
+                    // TODO - Ignore this case?
+                },
+                concrete_topic_level => {
+                    if let Entry::Occupied(o) =
+                        trie.concrete_topic_levels.entry(concrete_topic_level.to_string())
+                    {
+                        if o.get().is_empty() {
+                            o.remove_entry();
+                        }
+                    }
+                },
+            }
+        }
+
+        return_val
     }
 
     pub fn matching_subscribers<'a, F: FnMut(&T)>(&'a self, topic_name: String, mut sub_fn: F) {
@@ -126,6 +222,7 @@ mod tests {
         sub_trie.insert("office/+/+".to_string(), 9);
         sub_trie.insert("office/+/+/some_desk/+/fan_speed/+/temperature".to_string(), 10);
         sub_trie.insert("office/+/+/some_desk/+/#".to_string(), 11);
+        sub_trie.insert("sport/tennis/+".to_string(), 21);
         sub_trie.insert("#".to_string(), 12);
 
         println!("{:#?}", sub_trie);
@@ -160,5 +257,49 @@ mod tests {
         sub_trie.matching_subscribers("home".to_string(), |s| {
             println!("{}", s);
         });
+
+        println!();
+
+        sub_trie.matching_subscribers("sport/tennis/player1".to_string(), |s| {
+            println!("{}", s);
+        });
+
+        println!();
+
+        sub_trie.matching_subscribers("sport/tennis/player2".to_string(), |s| {
+            println!("{}", s);
+        });
+
+        println!();
+
+        sub_trie.matching_subscribers("sport/tennis/player1/ranking".to_string(), |s| {
+            println!("{}", s);
+        });
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut sub_trie = SubscriptionTrie::new();
+        sub_trie.insert("home/kitchen/temperature".to_string(), 1);
+        sub_trie.insert("home/kitchen/temperature".to_string(), 2);
+        sub_trie.insert("home/kitchen/humidity".to_string(), 1);
+        sub_trie.insert("home/kitchen/#".to_string(), 1);
+        sub_trie.insert("home/kitchen/+".to_string(), 3);
+        sub_trie.insert("home/kitchen/+".to_string(), 2);
+        sub_trie.insert("#".to_string(), 6);
+
+        println!("{:#?}", sub_trie);
+
+        sub_trie.remove("home/kitchen/temperature".to_string(), 1);
+        println!("{:#?}", sub_trie);
+
+        sub_trie.remove("home/kitchen/temperature".to_string(), 2);
+        println!("{:#?}", sub_trie);
+
+        sub_trie.remove("home/kitchen/#".to_string(), 1);
+        println!("{:#?}", sub_trie);
+
+        sub_trie.remove("home/kitchen/+".to_string(), 3);
+        println!("{:#?}", sub_trie);
     }
 }
