@@ -1,4 +1,7 @@
-use crate::topic::{MULTI_LEVEL_WILDCARD_STR, SINGLE_LEVEL_WILDCARD_STR, TOPIC_SEPARATOR};
+use crate::topic::{
+    filter::{TopicFilter, TopicLevel},
+    MULTI_LEVEL_WILDCARD_STR, SINGLE_LEVEL_WILDCARD_STR, TOPIC_SEPARATOR,
+};
 use std::collections::{hash_map::Entry, HashMap};
 
 // TODO(bschwind) - Support shared subscriptions
@@ -31,13 +34,13 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
             && self.concrete_topic_levels.is_empty();
     }
 
-    pub fn insert(&mut self, topic_filter: String, value: T) {
+    pub fn insert(&mut self, topic_filter: TopicFilter, value: T) {
         let mut current_tree = self;
         let mut multi_level = false;
 
-        for level in topic_filter.split(TOPIC_SEPARATOR) {
+        for level in topic_filter.levels() {
             match level {
-                SINGLE_LEVEL_WILDCARD_STR => {
+                TopicLevel::SingleLevelWildcard => {
                     if current_tree.single_level_wildcards.is_some() {
                         current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                     } else {
@@ -46,11 +49,11 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
                         current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                     }
                 },
-                MULTI_LEVEL_WILDCARD_STR => {
+                TopicLevel::MultiLevelWildcard => {
                     multi_level = true;
                     break;
                 },
-                concrete_topic_level => {
+                TopicLevel::Concrete(concrete_topic_level) => {
                     if current_tree.concrete_topic_levels.contains_key(concrete_topic_level) {
                         current_tree = current_tree
                             .concrete_topic_levels
@@ -214,19 +217,19 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut sub_tree = SubscriptionTree::new();
-        sub_tree.insert("home/kitchen/temperature".to_string(), 1);
-        sub_tree.insert("home/kitchen/humidity".to_string(), 2);
-        sub_tree.insert("home/kitchen".to_string(), 3);
-        sub_tree.insert("home/+/humidity".to_string(), 4);
-        sub_tree.insert("home/+".to_string(), 5);
-        sub_tree.insert("home/#".to_string(), 6);
-        sub_tree.insert("home/+/temperature".to_string(), 7);
-        sub_tree.insert("office/stairwell/temperature".to_string(), 8);
-        sub_tree.insert("office/+/+".to_string(), 9);
-        sub_tree.insert("office/+/+/some_desk/+/fan_speed/+/temperature".to_string(), 10);
-        sub_tree.insert("office/+/+/some_desk/+/#".to_string(), 11);
-        sub_tree.insert("sport/tennis/+".to_string(), 21);
-        sub_tree.insert("#".to_string(), 12);
+        sub_tree.insert("home/kitchen/temperature".parse().unwrap(), 1);
+        sub_tree.insert("home/kitchen/humidity".parse().unwrap(), 2);
+        sub_tree.insert("home/kitchen".parse().unwrap(), 3);
+        sub_tree.insert("home/+/humidity".parse().unwrap(), 4);
+        sub_tree.insert("home/+".parse().unwrap(), 5);
+        sub_tree.insert("home/#".parse().unwrap(), 6);
+        sub_tree.insert("home/+/temperature".parse().unwrap(), 7);
+        sub_tree.insert("office/stairwell/temperature".parse().unwrap(), 8);
+        sub_tree.insert("office/+/+".parse().unwrap(), 9);
+        sub_tree.insert("office/+/+/some_desk/+/fan_speed/+/temperature".parse().unwrap(), 10);
+        sub_tree.insert("office/+/+/some_desk/+/#".parse().unwrap(), 11);
+        sub_tree.insert("sport/tennis/+".parse().unwrap(), 21);
+        sub_tree.insert("#".parse().unwrap(), 12);
 
         println!("{:#?}", sub_tree);
 
@@ -283,13 +286,13 @@ mod tests {
     #[test]
     fn test_remove() {
         let mut sub_tree = SubscriptionTree::new();
-        sub_tree.insert("home/kitchen/temperature".to_string(), 1);
-        sub_tree.insert("home/kitchen/temperature".to_string(), 2);
-        sub_tree.insert("home/kitchen/humidity".to_string(), 1);
-        sub_tree.insert("home/kitchen/#".to_string(), 1);
-        sub_tree.insert("home/kitchen/+".to_string(), 3);
-        sub_tree.insert("home/kitchen/+".to_string(), 2);
-        sub_tree.insert("#".to_string(), 6);
+        sub_tree.insert("home/kitchen/temperature".parse().unwrap(), 1);
+        sub_tree.insert("home/kitchen/temperature".parse().unwrap(), 2);
+        sub_tree.insert("home/kitchen/humidity".parse().unwrap(), 1);
+        sub_tree.insert("home/kitchen/#".parse().unwrap(), 1);
+        sub_tree.insert("home/kitchen/+".parse().unwrap(), 3);
+        sub_tree.insert("home/kitchen/+".parse().unwrap(), 2);
+        sub_tree.insert("#".parse().unwrap(), 6);
 
         println!("{:#?}", sub_tree);
 
