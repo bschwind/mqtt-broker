@@ -1,6 +1,6 @@
 use crate::topic::{
-    MAX_TOPIC_LEN_BYTES, MULTI_LEVEL_WILDCARD, SHARED_SUBSCRIPTION_PREFIX, SINGLE_LEVEL_WILDCARD,
-    TOPIC_SEPARATOR,
+    MAX_TOPIC_LEN_BYTES, MULTI_LEVEL_WILDCARD, MULTI_LEVEL_WILDCARD_STR,
+    SHARED_SUBSCRIPTION_PREFIX, SINGLE_LEVEL_WILDCARD, SINGLE_LEVEL_WILDCARD_STR, TOPIC_SEPARATOR,
 };
 use std::str::FromStr;
 
@@ -172,8 +172,8 @@ impl<'a> Iterator for TopicLevels<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.levels_iter.next() {
-            Some("#") => Some(TopicLevel::MultiLevelWildcard),
-            Some("+") => Some(TopicLevel::SingleLevelWildcard),
+            Some(MULTI_LEVEL_WILDCARD_STR) => Some(TopicLevel::MultiLevelWildcard),
+            Some(SINGLE_LEVEL_WILDCARD_STR) => Some(TopicLevel::SingleLevelWildcard),
             Some(level) => Some(TopicLevel::Concrete(level)),
             None => None,
         }
