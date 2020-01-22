@@ -7,18 +7,46 @@ use std::collections::{hash_map::Entry, HashMap};
 // TODO(bschwind) - Support shared subscriptions
 
 #[derive(Debug)]
+pub struct SubscriptionTreeNode<T> {
+    subscribers: Vec<(u64, T)>,
+    single_level_wildcards: Option<Box<SubscriptionTreeNode<T>>>,
+    multi_level_wildcards: Vec<(u64, T)>,
+    concrete_topic_levels: HashMap<String, SubscriptionTreeNode<T>>,
+}
+
+#[derive(Debug)]
 pub struct SubscriptionTree<T> {
-    subscribers: Vec<T>,
-    single_level_wildcards: Option<Box<SubscriptionTree<T>>>,
-    multi_level_wildcards: Vec<T>,
-    concrete_topic_levels: HashMap<String, SubscriptionTree<T>>,
+    root: SubscriptionTreeNode<T>,
+    counter: u64,
+}
+
+impl<T: std::fmt::Debug> SubscriptionTree<T> {
+    pub fn new() -> Self {
+        Self { root: SubscriptionTreeNode::new(), counter: 0 }
+    }
+
+    pub fn insert(&mut self, topic_filter: TopicFilter, value: T) -> u64 {
+        let counter = self.counter;
+        self.root.insert(topic_filter, value, counter);
+        self.counter += 1;
+
+        counter
+    }
+
+    pub fn matching_subscribers<'a, F: FnMut(&T)>(&'a self, topic_name: &str, sub_fn: F) {
+        self.root.matching_subscribers(topic_name, sub_fn)
+    }
+
+    pub fn remove(&mut self, topic_filter: String, counter: u64) -> Option<T> {
+        self.root.remove(topic_filter, counter)
+    }
 }
 
 // TODO(bschwind) - All these topic strings need validation before
 //                  operating on them.
 
-impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
-    pub fn new() -> Self {
+impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
+    fn new() -> Self {
         Self {
             subscribers: Vec::new(),
             single_level_wildcards: None,
@@ -27,14 +55,14 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         return self.subscribers.is_empty()
             && self.single_level_wildcards.is_none()
             && self.multi_level_wildcards.is_empty()
             && self.concrete_topic_levels.is_empty();
     }
 
-    pub fn insert(&mut self, topic_filter: TopicFilter, value: T) {
+    fn insert(&mut self, topic_filter: TopicFilter, value: T, counter: u64) {
         let mut current_tree = self;
         let mut multi_level = false;
 
@@ -45,7 +73,7 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
                         current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                     } else {
                         current_tree.single_level_wildcards =
-                            Some(Box::new(SubscriptionTree::new()));
+                            Some(Box::new(SubscriptionTreeNode::new()));
                         current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                     }
                 },
@@ -62,7 +90,7 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
                     } else {
                         current_tree
                             .concrete_topic_levels
-                            .insert(concrete_topic_level.to_string(), SubscriptionTree::new());
+                            .insert(concrete_topic_level.to_string(), SubscriptionTreeNode::new());
 
                         // TODO - Do this without another hash lookup
                         current_tree = current_tree
@@ -75,15 +103,15 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
         }
 
         if multi_level {
-            current_tree.multi_level_wildcards.push(value);
+            current_tree.multi_level_wildcards.push((counter, value));
         } else {
-            current_tree.subscribers.push(value);
+            current_tree.subscribers.push((counter, value));
         }
     }
 
-    pub fn remove(&mut self, topic_filter: String, value: T) -> Option<T> {
+    fn remove(&mut self, topic_filter: String, counter: u64) -> Option<T> {
         let mut current_tree = self;
-        let mut stack: Vec<(*mut SubscriptionTree<T>, usize)> = vec![];
+        let mut stack: Vec<(*mut SubscriptionTreeNode<T>, usize)> = vec![];
 
         let levels: Vec<&str> = topic_filter.split(TOPIC_SEPARATOR).collect();
         let mut level_index = 0;
@@ -125,14 +153,15 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
 
             if *level == MULTI_LEVEL_WILDCARD_STR {
                 if let Some(pos) =
-                    current_tree.multi_level_wildcards.iter().position(|x| *x == value)
+                    current_tree.multi_level_wildcards.iter().position(|(c, _)| *c == counter)
                 {
                     Some(current_tree.multi_level_wildcards.remove(pos))
                 } else {
                     None
                 }
             } else {
-                if let Some(pos) = current_tree.subscribers.iter().position(|x| *x == value) {
+                if let Some(pos) = current_tree.subscribers.iter().position(|(c, _)| *c == counter)
+                {
                     Some(current_tree.subscribers.remove(pos))
                 } else {
                     None
@@ -167,10 +196,10 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
             }
         }
 
-        return_val
+        return_val.map(|(_, val)| val)
     }
 
-    pub fn matching_subscribers<'a, F: FnMut(&T)>(&'a self, topic_name: &str, mut sub_fn: F) {
+    fn matching_subscribers<'a, F: FnMut(&T)>(&'a self, topic_name: &str, mut sub_fn: F) {
         let mut tree_stack = vec![];
         let levels: Vec<&str> = topic_name.split(TOPIC_SEPARATOR).collect();
 
@@ -180,7 +209,7 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
             let (current_tree, current_level) = tree_stack.pop().unwrap();
             let level = levels[current_level];
 
-            for subscriber in &current_tree.multi_level_wildcards {
+            for (_, subscriber) in &current_tree.multi_level_wildcards {
                 sub_fn(subscriber);
             }
 
@@ -188,7 +217,7 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
                 if current_level + 1 < levels.len() {
                     tree_stack.push((sub_tree, current_level + 1));
                 } else {
-                    for subscriber in &sub_tree.subscribers {
+                    for (_, subscriber) in &sub_tree.subscribers {
                         sub_fn(subscriber);
                     }
                 }
@@ -201,7 +230,7 @@ impl<T: std::fmt::Debug + PartialEq> SubscriptionTree<T> {
                     let sub_tree = current_tree.concrete_topic_levels.get(level).unwrap();
                     tree_stack.push((sub_tree, current_level + 1));
                 } else {
-                    for subscriber in &sub_tree.subscribers {
+                    for (_, subscriber) in &sub_tree.subscribers {
                         sub_fn(subscriber);
                     }
                 }
@@ -286,26 +315,26 @@ mod tests {
     #[test]
     fn test_remove() {
         let mut sub_tree = SubscriptionTree::new();
-        sub_tree.insert("home/kitchen/temperature".parse().unwrap(), 1);
-        sub_tree.insert("home/kitchen/temperature".parse().unwrap(), 2);
-        sub_tree.insert("home/kitchen/humidity".parse().unwrap(), 1);
-        sub_tree.insert("home/kitchen/#".parse().unwrap(), 1);
-        sub_tree.insert("home/kitchen/+".parse().unwrap(), 3);
-        sub_tree.insert("home/kitchen/+".parse().unwrap(), 2);
-        sub_tree.insert("#".parse().unwrap(), 6);
+        let sub_1 = sub_tree.insert("home/kitchen/temperature".parse().unwrap(), "sub_1");
+        let sub_2 = sub_tree.insert("home/kitchen/temperature".parse().unwrap(), "sub_2");
+        let _sub_3 = sub_tree.insert("home/kitchen/humidity".parse().unwrap(), "sub_3");
+        let sub_4 = sub_tree.insert("home/kitchen/#".parse().unwrap(), "sub_4");
+        let sub_5 = sub_tree.insert("home/kitchen/+".parse().unwrap(), "sub_5");
+        let _sub_6 = sub_tree.insert("home/kitchen/+".parse().unwrap(), "sub_6");
+        let _sub_7 = sub_tree.insert("#".parse().unwrap(), "sub_7");
 
         println!("{:#?}", sub_tree);
 
-        sub_tree.remove("home/kitchen/temperature".to_string(), 1);
+        sub_tree.remove("home/kitchen/temperature".to_string(), sub_1);
         println!("{:#?}", sub_tree);
 
-        sub_tree.remove("home/kitchen/temperature".to_string(), 2);
+        sub_tree.remove("home/kitchen/temperature".to_string(), sub_2);
         println!("{:#?}", sub_tree);
 
-        sub_tree.remove("home/kitchen/#".to_string(), 1);
+        sub_tree.remove("home/kitchen/#".to_string(), sub_4);
         println!("{:#?}", sub_tree);
 
-        sub_tree.remove("home/kitchen/+".to_string(), 3);
+        sub_tree.remove("home/kitchen/+".to_string(), sub_5);
         println!("{:#?}", sub_tree);
     }
 }
