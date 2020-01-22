@@ -23,6 +23,13 @@ pub struct Topic {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum TopicLevel<'a> {
+    Concrete(&'a str),
+    SingleLevelWildcard,
+    MultiLevelWildcard,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TopicParseError {
     EmptyTopic,
     TopicTooLong,
@@ -141,9 +148,41 @@ impl FromStr for TopicFilter {
     }
 }
 
+pub struct TopicLevels<'a> {
+    levels_iter: std::str::Split<'a, char>,
+}
+
+impl<'a> TopicFilter {
+    fn filter(&'a self) -> &'a str {
+        match self {
+            TopicFilter::Concrete { filter, .. } => filter,
+            TopicFilter::Wildcard { filter, .. } => filter,
+            TopicFilter::SharedConcrete { filter, .. } => filter,
+            TopicFilter::SharedWildcard { filter, .. } => filter,
+        }
+    }
+
+    pub fn levels(&'a self) -> TopicLevels<'a> {
+        TopicLevels { levels_iter: self.filter().split(TOPIC_SEPARATOR) }
+    }
+}
+
+impl<'a> Iterator for TopicLevels<'a> {
+    type Item = TopicLevel<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.levels_iter.next() {
+            Some("#") => Some(TopicLevel::MultiLevelWildcard),
+            Some("+") => Some(TopicLevel::SingleLevelWildcard),
+            Some(level) => Some(TopicLevel::Concrete(level)),
+            None => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::topic::{TopicFilter, TopicParseError, MAX_TOPIC_LEN_BYTES};
+    use crate::topic::{TopicFilter, TopicLevel, TopicParseError, MAX_TOPIC_LEN_BYTES};
 
     #[test]
     fn test_topic_filter_parse_empty_topic() {
@@ -388,5 +427,74 @@ mod tests {
             "sport/++".parse::<TopicFilter>().unwrap_err(),
             TopicParseError::InvalidWildcardLevel
         );
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_simple() {
+        let filter: TopicFilter = "/".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("")));
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("")));
+        assert_eq!(levels.next(), None);
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_concrete() {
+        let filter: TopicFilter = "home/kitchen/temperature".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("home")));
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("kitchen")));
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("temperature")));
+        assert_eq!(levels.next(), None);
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_single_level_wildcard_1() {
+        let filter: TopicFilter = "home/+/+/temperature/+".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("home")));
+        assert_eq!(levels.next(), Some(TopicLevel::SingleLevelWildcard));
+        assert_eq!(levels.next(), Some(TopicLevel::SingleLevelWildcard));
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("temperature")));
+        assert_eq!(levels.next(), Some(TopicLevel::SingleLevelWildcard));
+        assert_eq!(levels.next(), None);
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_single_level_wildcard_2() {
+        let filter: TopicFilter = "+".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::SingleLevelWildcard));
+        assert_eq!(levels.next(), None);
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_mutli_level_wildcard_1() {
+        let filter: TopicFilter = "home/kitchen/#".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("home")));
+        assert_eq!(levels.next(), Some(TopicLevel::Concrete("kitchen")));
+        assert_eq!(levels.next(), Some(TopicLevel::MultiLevelWildcard));
+        assert_eq!(levels.next(), None);
+    }
+
+    #[test]
+    fn test_topic_filter_level_iterator_mutli_level_wildcard_2() {
+        let filter: TopicFilter = "#".parse().unwrap();
+
+        let mut levels = filter.levels();
+
+        assert_eq!(levels.next(), Some(TopicLevel::MultiLevelWildcard));
+        assert_eq!(levels.next(), None);
     }
 }
