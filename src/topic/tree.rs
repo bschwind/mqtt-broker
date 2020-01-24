@@ -40,6 +40,10 @@ impl<T: std::fmt::Debug> SubscriptionTree<T> {
     pub fn remove(&mut self, topic_filter: String, counter: u64) -> Option<T> {
         self.root.remove(topic_filter, counter)
     }
+
+    fn is_empty(&self) -> bool {
+        self.root.is_empty()
+    }
 }
 
 // TODO(bschwind) - All these topic strings need validation before
@@ -317,24 +321,26 @@ mod tests {
         let mut sub_tree = SubscriptionTree::new();
         let sub_1 = sub_tree.insert("home/kitchen/temperature".parse().unwrap(), "sub_1");
         let sub_2 = sub_tree.insert("home/kitchen/temperature".parse().unwrap(), "sub_2");
-        let _sub_3 = sub_tree.insert("home/kitchen/humidity".parse().unwrap(), "sub_3");
+        let sub_3 = sub_tree.insert("home/kitchen/humidity".parse().unwrap(), "sub_3");
         let sub_4 = sub_tree.insert("home/kitchen/#".parse().unwrap(), "sub_4");
         let sub_5 = sub_tree.insert("home/kitchen/+".parse().unwrap(), "sub_5");
-        let _sub_6 = sub_tree.insert("home/kitchen/+".parse().unwrap(), "sub_6");
-        let _sub_7 = sub_tree.insert("#".parse().unwrap(), "sub_7");
+        let sub_6 = sub_tree.insert("home/kitchen/+".parse().unwrap(), "sub_6");
+        let sub_7 = sub_tree.insert("#".parse().unwrap(), "sub_7");
 
-        println!("{:#?}", sub_tree);
+        assert!(!sub_tree.is_empty());
 
-        sub_tree.remove("home/kitchen/temperature".to_string(), sub_1);
-        println!("{:#?}", sub_tree);
+        assert!(sub_tree.remove("#".to_string(), sub_1).is_none());
 
-        sub_tree.remove("home/kitchen/temperature".to_string(), sub_2);
-        println!("{:#?}", sub_tree);
+        assert_eq!(sub_tree.remove("home/kitchen/temperature".to_string(), sub_1).unwrap(), "sub_1");
+        assert_eq!(sub_tree.remove("home/kitchen/temperature".to_string(), sub_2).unwrap(), "sub_2");
+        assert_eq!(sub_tree.remove("home/kitchen/#".to_string(), sub_4).unwrap(), "sub_4");
+        assert_eq!(sub_tree.remove("home/kitchen/+".to_string(), sub_5).unwrap(), "sub_5");
+        assert_eq!(sub_tree.remove("home/kitchen/humidity".to_string(), sub_3).unwrap(), "sub_3");
+        assert_eq!(sub_tree.remove("#".to_string(), sub_7).unwrap(), "sub_7");
+        assert_eq!(sub_tree.remove("home/kitchen/+".to_string(), sub_6).unwrap(), "sub_6");
 
-        sub_tree.remove("home/kitchen/#".to_string(), sub_4);
-        println!("{:#?}", sub_tree);
+        assert!(sub_tree.is_empty());
 
-        sub_tree.remove("home/kitchen/+".to_string(), sub_5);
-        println!("{:#?}", sub_tree);
+        assert!(sub_tree.remove("home/kitchen/+".to_string(), sub_6).is_none());
     }
 }
