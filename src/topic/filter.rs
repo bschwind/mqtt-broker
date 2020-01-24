@@ -204,6 +204,12 @@ impl<'a> TopicFilter {
     }
 }
 
+impl<'a> Topic {
+    pub fn levels(&'a self) -> TopicLevels<'a> {
+        TopicLevels { levels_iter: self.topic_name.split(TOPIC_SEPARATOR) }
+    }
+}
+
 impl<'a> Iterator for TopicLevels<'a> {
     type Item = TopicLevel<'a>;
 
