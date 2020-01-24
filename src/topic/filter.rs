@@ -16,7 +16,7 @@ pub enum TopicFilter {
 
 /// A topic name publishers use when sending MQTT messages.
 /// Cannot contain wildcards.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Topic {
     topic_name: String,
     level_count: u32,
@@ -37,6 +37,7 @@ pub enum TopicParseError {
     InvalidWildcardLevel,
     InvalidSharedGroupName,
     EmptySharedGroupName,
+    WildcardOrNullInTopic,
 }
 
 /// If Ok, returns (level_count, contains_wildcards).
@@ -68,6 +69,11 @@ impl FromStr for TopicFilter {
         // Filters and topics cannot be empty
         if filter.is_empty() {
             return Err(TopicParseError::EmptyTopic);
+        }
+
+        // TODO - assert no null character U+0000
+        if filter.contains('\0') {
+            return Err(TopicParseError::WildcardOrNullInTopic);
         }
 
         // Filters cannot exceed the byte length in the MQTT spec
@@ -148,6 +154,37 @@ impl FromStr for TopicFilter {
     }
 }
 
+impl FromStr for Topic {
+    type Err = TopicParseError;
+
+    fn from_str(topic: &str) -> Result<Self, Self::Err> {
+        // TODO - Consider disallowing leading $ characters
+
+        // Topics cannot be empty
+        if topic.is_empty() {
+            return Err(TopicParseError::EmptyTopic);
+        }
+
+        // Topics cannot exceed the byte length in the MQTT spec
+        if topic.len() > MAX_TOPIC_LEN_BYTES {
+            return Err(TopicParseError::TopicTooLong);
+        }
+
+        // Topics cannot contain wildcards or null characters
+        if topic.contains(|x: char| {
+            x == SINGLE_LEVEL_WILDCARD || x == MULTI_LEVEL_WILDCARD || x == '\0'
+        }) {
+            return Err(TopicParseError::WildcardOrNullInTopic);
+        }
+
+        let level_count = topic.split(TOPIC_SEPARATOR).count() as u32;
+
+        let topic = Topic { topic_name: topic.to_string(), level_count };
+
+        Ok(topic)
+    }
+}
+
 pub struct TopicLevels<'a> {
     levels_iter: std::str::Split<'a, char>,
 }
@@ -182,7 +219,7 @@ impl<'a> Iterator for TopicLevels<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::topic::{TopicFilter, TopicLevel, TopicParseError, MAX_TOPIC_LEN_BYTES};
+    use crate::topic::{Topic, TopicFilter, TopicLevel, TopicParseError, MAX_TOPIC_LEN_BYTES};
 
     #[test]
     fn test_topic_filter_parse_empty_topic() {
@@ -426,6 +463,53 @@ mod tests {
         assert_eq!(
             "sport/++".parse::<TopicFilter>().unwrap_err(),
             TopicParseError::InvalidWildcardLevel
+        );
+    }
+
+    #[test]
+    fn test_topic_name_success() {
+        assert_eq!(
+            "/".parse::<Topic>().unwrap(),
+            Topic { topic_name: "/".to_string(), level_count: 2 }
+        );
+
+        assert_eq!(
+            "Accounts payable".parse::<Topic>().unwrap(),
+            Topic { topic_name: "Accounts payable".to_string(), level_count: 1 }
+        );
+
+        assert_eq!(
+            "home/kitchen".parse::<Topic>().unwrap(),
+            Topic { topic_name: "home/kitchen".to_string(), level_count: 2 }
+        );
+
+        assert_eq!(
+            "home/kitchen/temperature".parse::<Topic>().unwrap(),
+            Topic { topic_name: "home/kitchen/temperature".to_string(), level_count: 3 }
+        );
+    }
+
+    #[test]
+    fn test_topic_name_failure() {
+        assert_eq!("#".parse::<Topic>().unwrap_err(), TopicParseError::WildcardOrNullInTopic,);
+
+        assert_eq!("+".parse::<Topic>().unwrap_err(), TopicParseError::WildcardOrNullInTopic,);
+
+        assert_eq!("\0".parse::<Topic>().unwrap_err(), TopicParseError::WildcardOrNullInTopic,);
+
+        assert_eq!(
+            "/multi/level/#".parse::<Topic>().unwrap_err(),
+            TopicParseError::WildcardOrNullInTopic,
+        );
+
+        assert_eq!(
+            "/single/level/+".parse::<Topic>().unwrap_err(),
+            TopicParseError::WildcardOrNullInTopic,
+        );
+
+        assert_eq!(
+            "/null/byte/\0".parse::<Topic>().unwrap_err(),
+            TopicParseError::WildcardOrNullInTopic,
         );
     }
 
