@@ -60,10 +60,10 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
     }
 
     fn is_empty(&self) -> bool {
-        return self.subscribers.is_empty()
+        self.subscribers.is_empty()
             && self.single_level_wildcards.is_none()
             && self.multi_level_wildcards.is_empty()
-            && self.concrete_topic_levels.is_empty();
+            && self.concrete_topic_levels.is_empty()
     }
 
     fn insert(&mut self, topic_filter: &TopicFilter, value: T, counter: u64) {
@@ -163,13 +163,12 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                 } else {
                     None
                 }
+            } else if let Some(pos) =
+                current_tree.subscribers.iter().position(|(c, _)| *c == counter)
+            {
+                Some(current_tree.subscribers.remove(pos))
             } else {
-                if let Some(pos) = current_tree.subscribers.iter().position(|(c, _)| *c == counter)
-                {
-                    Some(current_tree.subscribers.remove(pos))
-                } else {
-                    None
-                }
+                None
             }
         };
 
@@ -190,7 +189,7 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                 },
                 TopicLevel::Concrete(concrete_topic_level) => {
                     if let Entry::Occupied(o) =
-                        tree.concrete_topic_levels.entry(concrete_topic_level.to_string())
+                        tree.concrete_topic_levels.entry((*concrete_topic_level).to_string())
                     {
                         if o.get().is_empty() {
                             o.remove_entry();

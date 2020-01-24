@@ -743,7 +743,7 @@ fn decode_publish_complete(
 fn decode_subscribe(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
-    protocol_version: &ProtocolVersion,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let start_cursor_pos = bytes.position();
 
@@ -752,7 +752,7 @@ fn decode_subscribe(
     let mut subscription_identifier = None;
     let mut user_properties = vec![];
 
-    if *protocol_version == ProtocolVersion::V500 {
+    if protocol_version == ProtocolVersion::V500 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
@@ -1016,7 +1016,7 @@ fn decode_authenticate(
 }
 
 fn decode_packet(
-    protocol_version: &ProtocolVersion,
+    protocol_version: ProtocolVersion,
     packet_type: &PacketType,
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
@@ -1043,7 +1043,7 @@ fn decode_packet(
 
 pub fn decode_mqtt(
     bytes: &mut BytesMut,
-    protocol_version: &ProtocolVersion,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let mut bytes = Cursor::new(bytes);
     let first_byte = read_u8!(bytes);
