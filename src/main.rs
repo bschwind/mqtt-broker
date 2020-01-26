@@ -15,6 +15,7 @@ mod broker;
 mod client;
 mod decoder;
 mod encoder;
+mod topic;
 mod types;
 
 pub struct MqttCodec {
@@ -28,7 +29,7 @@ impl MqttCodec {
 
     pub fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Packet>, DecodeError> {
         // TODO - Ideally we should keep a state machine to store the data we've read so far.
-        let packet = decoder::decode_mqtt(buf, &self.version);
+        let packet = decoder::decode_mqtt(buf, self.version);
 
         if let Ok(Some(Packet::Connect(packet))) = &packet {
             self.version = packet.protocol_version;

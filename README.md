@@ -20,3 +20,9 @@ Testing
 -------
 
 	$ cargo test
+
+Code Format
+-----------
+The formatting options currently use nightly-only options.
+
+    $ cargo +nightly fmt

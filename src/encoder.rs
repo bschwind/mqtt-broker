@@ -530,7 +530,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -562,7 +562,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -591,7 +591,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -608,7 +608,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -625,7 +625,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -642,7 +642,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -659,7 +659,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -683,7 +683,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -701,7 +701,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -718,7 +718,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -736,7 +736,7 @@ mod tests {
 
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -746,7 +746,7 @@ mod tests {
         let packet = Packet::PingRequest;
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -756,7 +756,7 @@ mod tests {
         let packet = Packet::PingResponse;
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -773,7 +773,7 @@ mod tests {
         });
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
@@ -790,7 +790,7 @@ mod tests {
         });
         let mut bytes = BytesMut::new();
         encode_mqtt(&packet, &mut bytes);
-        let decoded = decode_mqtt(&mut bytes, &ProtocolVersion::V500).unwrap().unwrap();
+        let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
     }
