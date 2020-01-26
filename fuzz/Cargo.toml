@@ -1,0 +1,24 @@
+[package]
+name = "mqtt-broker-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+bytes = "0.5.0"
+libfuzzer-sys = "0.3"
+
+[dependencies.mqtt-broker]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "decoder_fuzzer"
+path = "fuzz_targets/decoder_fuzzer.rs"
