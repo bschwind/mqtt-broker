@@ -22,3 +22,11 @@ members = ["."]
 [[bin]]
 name = "decoder_fuzzer"
 path = "fuzz_targets/decoder_fuzzer.rs"
+
+[[bin]]
+name = "topic_filter_fuzzer"
+path = "fuzz_targets/topic_filter_fuzzer.rs"
+
+[[bin]]
+name = "topic_fuzzer"
+path = "fuzz_targets/topic_fuzzer.rs"
