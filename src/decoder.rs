@@ -563,10 +563,13 @@ fn decode_publish(
     })?);
 
     let end_cursor_pos = bytes.position();
-    let variable_header_size = end_cursor_pos - start_cursor_pos;
+    let variable_header_size = (end_cursor_pos - start_cursor_pos) as u32;
     // Variable header end
 
-    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    if remaining_packet_length < variable_header_size {
+        return Err(DecodeError::InvalidRemainingLength);
+    }
+    let payload_size = remaining_packet_length - variable_header_size;
     let payload = return_if_none!(decode_binary_data_with_size(bytes, payload_size as usize)?);
 
     let packet = PublishPacket {
@@ -762,14 +765,17 @@ fn decode_subscribe(
         })?);
     }
 
-    let variable_header_size = bytes.position() - start_cursor_pos;
-    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
+    if remaining_packet_length < variable_header_size {
+        return Err(DecodeError::InvalidRemainingLength);
+    }
+    let payload_size = remaining_packet_length - variable_header_size;
 
     let mut subscription_topics = vec![];
-    let mut bytes_read = 0;
+    let mut bytes_read: usize = 0;
 
     loop {
-        if bytes_read >= payload_size {
+        if bytes_read >= payload_size as usize {
             break;
         }
 
@@ -799,7 +805,7 @@ fn decode_subscribe(
         subscription_topics.push(subscription_topic);
 
         let end_cursor_pos = bytes.position();
-        bytes_read += end_cursor_pos - start_cursor_pos;
+        bytes_read += (end_cursor_pos - start_cursor_pos) as usize;
     }
 
     let packet = SubscribePacket {
@@ -831,8 +837,11 @@ fn decode_subscribe_ack(
         }
     })?);
 
-    let variable_header_size = bytes.position() - start_cursor_pos;
-    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
+    if remaining_packet_length < variable_header_size {
+        return Err(DecodeError::InvalidRemainingLength);
+    }
+    let payload_size = remaining_packet_length - variable_header_size;
 
     let mut reason_codes = vec![];
     for _ in 0..payload_size {
@@ -863,14 +872,17 @@ fn decode_unsubscribe(
         }
     })?);
 
-    let variable_header_size = bytes.position() - start_cursor_pos;
-    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
+    if remaining_packet_length < variable_header_size {
+        return Err(DecodeError::InvalidRemainingLength);
+    }
+    let payload_size = remaining_packet_length - variable_header_size;
 
     let mut topics = vec![];
-    let mut bytes_read = 0;
+    let mut bytes_read: usize = 0;
 
     loop {
-        if bytes_read >= payload_size {
+        if bytes_read >= payload_size as usize {
             break;
         }
 
@@ -880,7 +892,7 @@ fn decode_unsubscribe(
         topics.push(topic);
 
         let end_cursor_pos = bytes.position();
-        bytes_read += end_cursor_pos - start_cursor_pos;
+        bytes_read += (end_cursor_pos - start_cursor_pos) as usize;
     }
 
     let packet = UnsubscribePacket { packet_id, user_properties, topics };
@@ -907,8 +919,11 @@ fn decode_unsubscribe_ack(
         }
     })?);
 
-    let variable_header_size = bytes.position() - start_cursor_pos;
-    let payload_size = remaining_packet_length as u64 - variable_header_size;
+    let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
+    if remaining_packet_length < variable_header_size {
+        return Err(DecodeError::InvalidRemainingLength);
+    }
+    let payload_size = remaining_packet_length - variable_header_size;
 
     let mut reason_codes = vec![];
     for _ in 0..payload_size {
@@ -1075,4 +1090,18 @@ pub fn decode_mqtt(
     let _rest = bytes.split_to(cursor_pos);
 
     Ok(Some(packet))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{decoder::*, types::*};
+    use bytes::BytesMut;
+
+    #[test]
+    fn test_invalid_remaining_length() {
+        let mut bytes = BytesMut::new();
+        bytes.extend_from_slice(&[136, 1, 0, 36, 0, 0]); // Discovered from fuzz test
+
+        let _ = decode_mqtt(&mut bytes, ProtocolVersion::V500);
+    }
 }
