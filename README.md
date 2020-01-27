@@ -45,5 +45,8 @@ rustc 1.42.0-nightly (6d3f4e0aa 2020-01-25)
 
 ```
 cargo install cargo-fuzz
-cargo +nightly fuzz run decoder_fuzzer
+cargo +nightly fuzz run decoder_fuzzer_v311
+cargo +nightly fuzz run decoder_fuzzer_v500
+cargo +nightly fuzz run topic_filter_fuzzer
+cargo +nightly fuzz run topic_fuzzer
 ```

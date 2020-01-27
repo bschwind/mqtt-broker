@@ -20,8 +20,12 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "decoder_fuzzer"
-path = "fuzz_targets/decoder_fuzzer.rs"
+name = "decoder_fuzzer_v311"
+path = "fuzz_targets/decoder_fuzzer_v311.rs"
+
+[[bin]]
+name = "decoder_fuzzer_v500"
+path = "fuzz_targets/decoder_fuzzer_v500.rs"
 
 [[bin]]
 name = "topic_filter_fuzzer"
