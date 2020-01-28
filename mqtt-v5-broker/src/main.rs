@@ -2,7 +2,6 @@ use crate::{
     broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
 };
-
 use mqtt_v5::codec::MqttCodec;
 use tokio::{
     net::{TcpListener, TcpStream},
