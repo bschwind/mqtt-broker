@@ -1,5 +1,9 @@
 [package]
 name = "mqtt-v5"
+description = "Rust types, encode/decode functions, and a tokio codec for MQTT V5"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/bschwind/mqtt-broker"
 version = "0.1.0"
 authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"

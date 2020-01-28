@@ -1,5 +1,9 @@
 [package]
 name = "mqtt-v5-broker"
+description = "A tokio-based MQTT v5 broker written in Rust."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/bschwind/mqtt-broker"
 version = "0.1.0"
 authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"
