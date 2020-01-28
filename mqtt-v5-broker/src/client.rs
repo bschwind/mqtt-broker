@@ -1,7 +1,7 @@
 use crate::broker::BrokerMessage;
 use futures::{
     stream::{SplitSink, SplitStream},
-    FutureExt, SinkExt, StreamExt,
+    SinkExt, StreamExt,
 };
 use mqtt_v5::{
     codec::MqttCodec,
@@ -151,16 +151,13 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
     pub async fn run(self) {
         let (sink, stream) = self.framed_stream.split();
 
-        let task_rx =
-            Self::handle_socket_reads(stream, self.id, self.broker_tx, self.self_tx).fuse();
-        let task_tx = Self::handle_socket_writes(sink, self.broker_rx).fuse();
+        let task_rx = Self::handle_socket_reads(stream, self.id, self.broker_tx, self.self_tx);
+        let task_tx = Self::handle_socket_writes(sink, self.broker_rx);
 
-        futures::pin_mut!(task_rx, task_tx);
-
-        futures::select! {
+        tokio::select! {
             _ = task_rx => println!("rx"),
             _ = task_tx => println!("tx"),
-            complete => println!("complete"),
+            else => println!("done"),
         }
     }
 }
