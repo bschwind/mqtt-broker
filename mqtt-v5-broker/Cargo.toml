@@ -1,0 +1,11 @@
+[package]
+name = "mqtt-v5-broker"
+version = "0.1.0"
+authors = ["Brian Schwind <brianmschwind@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+tokio = { version = "0.2", features = ["tcp", "dns", "rt-threaded", "sync", "time"] }
+tokio-util = { version = "0.2", features = ["codec"] }
+mqtt-v5 = { path = "../mqtt-v5", version = "0.1.0" }
+futures = "0.3"

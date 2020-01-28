@@ -1,4 +1,4 @@
-use crate::topic::{Topic, TopicFilter, TopicLevel};
+use mqtt_v5::topic::{Topic, TopicFilter, TopicLevel};
 use std::collections::{hash_map::Entry, HashMap};
 
 // TODO(bschwind) - Support shared subscriptions
@@ -243,7 +243,7 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::topic::SubscriptionTree;
+    use crate::tree::SubscriptionTree;
 
     #[test]
     fn test_insert() {

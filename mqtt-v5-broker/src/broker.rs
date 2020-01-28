@@ -1,9 +1,7 @@
-use crate::{
-    client::ClientMessage,
-    types::{
-        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, ProtocolVersion,
-        SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
-    },
+use crate::client::ClientMessage;
+use mqtt_v5::types::{
+    properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, ProtocolVersion,
+    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
 };
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{self, Receiver, Sender};
