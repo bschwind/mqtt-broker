@@ -1,67 +1,19 @@
 use crate::{
     broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
-    types::{DecodeError, Packet, ProtocolVersion},
 };
-use bytes::BytesMut;
+
+use mqtt_v5::codec::MqttCodec;
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
     sync::mpsc::Sender,
 };
-use tokio_util::codec::{Decoder, Encoder, Framed};
+use tokio_util::codec::Framed;
 
 mod broker;
 mod client;
-mod decoder;
-mod encoder;
-mod topic;
-mod types;
-
-pub struct MqttCodec {
-    version: ProtocolVersion,
-}
-
-impl MqttCodec {
-    pub fn new() -> Self {
-        MqttCodec { version: ProtocolVersion::V311 }
-    }
-
-    pub fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Packet>, DecodeError> {
-        // TODO - Ideally we should keep a state machine to store the data we've read so far.
-        let packet = decoder::decode_mqtt(buf, self.version);
-
-        if let Ok(Some(Packet::Connect(packet))) = &packet {
-            self.version = packet.protocol_version;
-        }
-
-        packet
-    }
-
-    pub fn encode(&mut self, packet: Packet, bytes: &mut BytesMut) -> Result<(), DecodeError> {
-        encoder::encode_mqtt(&packet, bytes);
-        Ok(())
-    }
-}
-
-impl Decoder for MqttCodec {
-    type Error = DecodeError;
-    type Item = Packet;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // TODO - Ideally we should keep a state machine to store the data we've read so far.
-        self.decode(buf)
-    }
-}
-
-impl Encoder for MqttCodec {
-    type Error = DecodeError;
-    type Item = Packet;
-
-    fn encode(&mut self, packet: Self::Item, bytes: &mut BytesMut) -> Result<(), DecodeError> {
-        self.encode(packet, bytes)
-    }
-}
+mod tree;
 
 async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     println!("Handling a client");

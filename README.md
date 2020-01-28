@@ -5,7 +5,7 @@ A tokio-based MQTT v5 broker written in Rust.
 
 # Dependencies
 - cargo
-- rustc
+- rustc (version 1.39 or later)
 
 # Build
 
@@ -31,6 +31,12 @@ The formatting options currently use nightly-only options.
 
 ```
 $ cargo +nightly fmt
+```
+
+# Code Linting
+
+```
+$ cargo clippy
 ```
 
 # Code Fuzzing

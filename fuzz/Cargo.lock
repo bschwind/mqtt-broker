@@ -223,7 +223,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "mqtt-broker"
+name = "mqtt-broker-fuzz"
+version = "0.0.0"
+dependencies = [
+ "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libfuzzer-sys 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mqtt-v5 0.1.0",
+]
+
+[[package]]
+name = "mqtt-v5"
 version = "0.1.0"
 dependencies = [
  "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -231,15 +240,6 @@ dependencies = [
  "num_enum 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-util 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "mqtt-broker-fuzz"
-version = "0.0.0"
-dependencies = [
- "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "libfuzzer-sys 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "mqtt-broker 0.1.0",
 ]
 
 [[package]]

@@ -12,8 +12,8 @@ cargo-fuzz = true
 bytes = "0.5.0"
 libfuzzer-sys = "0.3"
 
-[dependencies.mqtt-broker]
-path = ".."
+[dependencies.mqtt-v5]
+path = "../mqtt-v5"
 
 # Prevent this from interfering with workspaces
 [workspace]

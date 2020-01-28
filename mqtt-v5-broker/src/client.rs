@@ -1,11 +1,11 @@
-use crate::{
-    broker::BrokerMessage,
-    types::{ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, SubscribeAckPacket},
-    MqttCodec,
-};
+use crate::broker::BrokerMessage;
 use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
+};
+use mqtt_v5::{
+    codec::MqttCodec,
+    types::{ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, SubscribeAckPacket},
 };
 use std::time::Duration;
 use tokio::{
