@@ -5,7 +5,9 @@ use futures::{
 };
 use mqtt_v5::{
     codec::MqttCodec,
-    types::{ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, SubscribeAckPacket},
+    types::{
+        ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, PublishPacket, SubscribeAckPacket,
+    },
 };
 use std::time::Duration;
 use tokio::{
@@ -74,6 +76,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
 pub enum ClientMessage {
     ConnectAck(ConnectAckPacket),
     SubscribeAck(SubscribeAckPacket),
+    Publish(PublishPacket),
+    PingResponse,
     Disconnect,
 }
 
@@ -102,7 +106,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
         mut stream: SplitStream<Framed<T, MqttCodec>>,
         client_id: String,
         mut broker_tx: Sender<BrokerMessage>,
-        _self_tx: Sender<ClientMessage>,
+        mut self_tx: Sender<ClientMessage>,
     ) {
         while let Some(frame) = stream.next().await {
             match frame {
@@ -116,6 +120,18 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
                                 .await
                                 .expect("Couldn't send Subscribe message to broker");
                         },
+                        Packet::Publish(packet) => {
+                            broker_tx
+                                .send(BrokerMessage::Publish(client_id.clone(), packet))
+                                .await
+                                .expect("Couldn't send Publish message to broker");
+                        },
+                        Packet::PingRequest => {
+                            self_tx
+                                .send(ClientMessage::PingResponse)
+                                .await
+                                .expect("Couldn't send PingResponse message to self");
+                        },
                         _ => {},
                     }
                 },
@@ -125,6 +141,11 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
                 },
             }
         }
+
+        broker_tx
+            .send(BrokerMessage::Disconnect(client_id.clone()))
+            .await
+            .expect("Couldn't send Disconnect message to broker");
     }
 
     async fn handle_socket_writes(
@@ -140,6 +161,16 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
                 },
                 ClientMessage::SubscribeAck(packet) => {
                     sink.send(Packet::SubscribeAck(packet))
+                        .await
+                        .expect("Couldn't forward packet to framed socket");
+                },
+                ClientMessage::Publish(packet) => {
+                    sink.send(Packet::Publish(packet))
+                        .await
+                        .expect("Couldn't forward packet to framed socket");
+                },
+                ClientMessage::PingResponse => {
+                    sink.send(Packet::PingResponse)
                         .await
                         .expect("Couldn't forward packet to framed socket");
                 },

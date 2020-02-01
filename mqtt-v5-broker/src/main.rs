@@ -29,8 +29,6 @@ async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     };
 
     connected_client.run().await;
-
-    println!("Client disconnected");
 }
 
 async fn server_loop() -> Result<(), Box<dyn std::error::Error>> {

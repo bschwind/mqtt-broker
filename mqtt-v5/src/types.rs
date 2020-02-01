@@ -45,7 +45,7 @@ pub enum ProtocolVersion {
     V500 = 5,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariableByteInt(pub u32);
 
 impl VariableByteInt {
@@ -246,7 +246,7 @@ pub mod properties {
     //        byte int, so `1 + ` lines should be replaced with the
     //        variable byte count. But in practice they're all 1.
     // Property structs
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct PayloadFormatIndicator(pub u8);
     impl PacketSize for PayloadFormatIndicator {
         fn calc_size(&self) -> u32 {
@@ -254,7 +254,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct MessageExpiryInterval(pub u32);
     impl PacketSize for MessageExpiryInterval {
         fn calc_size(&self) -> u32 {
@@ -262,7 +262,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ContentType(pub String);
     impl PacketSize for ContentType {
         fn calc_size(&self) -> u32 {
@@ -270,7 +270,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ResponseTopic(pub String);
     impl PacketSize for ResponseTopic {
         fn calc_size(&self) -> u32 {
@@ -278,7 +278,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct CorrelationData(pub Vec<u8>);
     impl PacketSize for CorrelationData {
         fn calc_size(&self) -> u32 {
@@ -286,7 +286,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct SubscriptionIdentifier(pub VariableByteInt);
     impl PacketSize for SubscriptionIdentifier {
         fn calc_size(&self) -> u32 {
@@ -294,7 +294,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct SessionExpiryInterval(pub u32);
     impl PacketSize for SessionExpiryInterval {
         fn calc_size(&self) -> u32 {
@@ -302,7 +302,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct AssignedClientIdentifier(pub String);
     impl PacketSize for AssignedClientIdentifier {
         fn calc_size(&self) -> u32 {
@@ -310,7 +310,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ServerKeepAlive(pub u16);
     impl PacketSize for ServerKeepAlive {
         fn calc_size(&self) -> u32 {
@@ -318,7 +318,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct AuthenticationMethod(pub String);
     impl PacketSize for AuthenticationMethod {
         fn calc_size(&self) -> u32 {
@@ -326,7 +326,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct AuthenticationData(pub Vec<u8>);
     impl PacketSize for AuthenticationData {
         fn calc_size(&self) -> u32 {
@@ -334,7 +334,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct RequestProblemInformation(pub u8);
     impl PacketSize for RequestProblemInformation {
         fn calc_size(&self) -> u32 {
@@ -342,7 +342,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct WillDelayInterval(pub u32);
     impl PacketSize for WillDelayInterval {
         fn calc_size(&self) -> u32 {
@@ -350,7 +350,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct RequestResponseInformation(pub u8);
     impl PacketSize for RequestResponseInformation {
         fn calc_size(&self) -> u32 {
@@ -358,7 +358,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ResponseInformation(pub String);
     impl PacketSize for ResponseInformation {
         fn calc_size(&self) -> u32 {
@@ -366,7 +366,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ServerReference(pub String);
     impl PacketSize for ServerReference {
         fn calc_size(&self) -> u32 {
@@ -374,7 +374,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ReasonString(pub String);
     impl PacketSize for ReasonString {
         fn calc_size(&self) -> u32 {
@@ -382,7 +382,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct ReceiveMaximum(pub u16);
     impl PacketSize for ReceiveMaximum {
         fn calc_size(&self) -> u32 {
@@ -390,7 +390,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct TopicAliasMaximum(pub u16);
     impl PacketSize for TopicAliasMaximum {
         fn calc_size(&self) -> u32 {
@@ -398,7 +398,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct TopicAlias(pub u16);
     impl PacketSize for TopicAlias {
         fn calc_size(&self) -> u32 {
@@ -406,7 +406,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct MaximumQos(pub QoS);
     impl PacketSize for MaximumQos {
         fn calc_size(&self) -> u32 {
@@ -414,7 +414,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct RetainAvailable(pub u8);
     impl PacketSize for RetainAvailable {
         fn calc_size(&self) -> u32 {
@@ -422,7 +422,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct UserProperty(pub String, pub String);
     impl PacketSize for UserProperty {
         fn calc_size(&self) -> u32 {
@@ -430,7 +430,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct MaximumPacketSize(pub u32);
     impl PacketSize for MaximumPacketSize {
         fn calc_size(&self) -> u32 {
@@ -438,7 +438,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct WildcardSubscriptionAvailable(pub u8);
     impl PacketSize for WildcardSubscriptionAvailable {
         fn calc_size(&self) -> u32 {
@@ -446,7 +446,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct SubscriptionIdentifierAvailable(pub u8);
     impl PacketSize for SubscriptionIdentifierAvailable {
         fn calc_size(&self) -> u32 {
@@ -454,7 +454,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct SharedSubscriptionAvailable(pub u8);
     impl PacketSize for SharedSubscriptionAvailable {
         fn calc_size(&self) -> u32 {
@@ -494,7 +494,7 @@ pub mod properties {
         SharedSubscriptionAvailable = 42,
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub enum Property {
         PayloadFormatIndicator(PayloadFormatIndicator),
         MessageExpiryInterval(MessageExpiryInterval),
@@ -863,7 +863,7 @@ impl PropertySize for ConnectAckPacket {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PublishPacket {
     // Fixed header
     pub is_duplicate: bool,
