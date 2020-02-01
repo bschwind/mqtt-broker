@@ -138,7 +138,10 @@ fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8
 
     let position = bytes.position() as usize;
 
-    Ok(Some(bytes.get_ref()[position..(position + data_size_bytes)].into()))
+    let result = Ok(Some(bytes.get_ref()[position..(position + data_size_bytes)].into()));
+    bytes.advance(data_size_bytes);
+
+    result
 }
 
 fn decode_binary_data_with_size(
@@ -148,8 +151,10 @@ fn decode_binary_data_with_size(
     require_length!(bytes, size);
 
     let position = bytes.position() as usize;
+    let result = Ok(Some(bytes.get_ref()[position..(position + size)].into()));
+    bytes.advance(size);
 
-    Ok(Some(bytes.get_ref()[position..(position + size)].into()))
+    result
 }
 
 fn decode_property(
@@ -524,6 +529,7 @@ fn decode_publish(
     bytes: &mut Cursor<&mut BytesMut>,
     first_byte: u8,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let is_duplicate = (first_byte & 0b0000_1000) == 0b0000_1000;
     let qos_val = (first_byte & 0b0000_0110) >> 1;
@@ -550,19 +556,21 @@ fn decode_publish(
     let mut subscription_identifier = None;
     let mut content_type = None;
 
-    return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
-            Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
-            Property::TopicAlias(p) => topic_alias = Some(p),
-            Property::ResponseTopic(p) => response_topic = Some(p),
-            Property::CorrelationData(p) => correlation_data = Some(p),
-            Property::UserProperty(p) => user_properties.push(p),
-            Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
-            Property::ContentType(p) => content_type = Some(p),
-            _ => {}, // Invalid property for packet
-        }
-    })?);
+    if protocol_version == ProtocolVersion::V500 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::PayloadFormatIndicator(p) => payload_format_indicator = Some(p),
+                Property::MessageExpiryInterval(p) => message_expiry_interval = Some(p),
+                Property::TopicAlias(p) => topic_alias = Some(p),
+                Property::ResponseTopic(p) => response_topic = Some(p),
+                Property::CorrelationData(p) => correlation_data = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
+                Property::ContentType(p) => content_type = Some(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
 
     let end_cursor_pos = bytes.position();
     let variable_header_size = (end_cursor_pos - start_cursor_pos) as u32;
@@ -1047,7 +1055,9 @@ fn decode_packet(
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
         PacketType::ConnectAck => decode_connect_ack(bytes),
-        PacketType::Publish => decode_publish(bytes, first_byte, remaining_packet_length),
+        PacketType::Publish => {
+            decode_publish(bytes, first_byte, remaining_packet_length, protocol_version)
+        },
         PacketType::PublishAck => decode_publish_ack(bytes, remaining_packet_length),
         PacketType::PublishReceived => decode_publish_received(bytes, remaining_packet_length),
         PacketType::PublishRelease => decode_publish_release(bytes, remaining_packet_length),
