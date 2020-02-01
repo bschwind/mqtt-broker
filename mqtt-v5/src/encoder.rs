@@ -425,8 +425,8 @@ fn encode_unsubscribe(packet: &UnsubscribePacket, bytes: &mut BytesMut) {
 
     packet.user_properties.encode(bytes);
 
-    for topic in &packet.topics {
-        encode_string(topic, bytes);
+    for topic_filter in &packet.topic_filters {
+        encode_string(&topic_filter.to_string(), bytes);
     }
 }
 
@@ -713,7 +713,7 @@ mod tests {
 
             user_properties: vec![],
 
-            topics: vec!["test_topic".to_string()],
+            topic_filters: vec!["test_topic".parse().unwrap()],
         });
 
         let mut bytes = BytesMut::new();

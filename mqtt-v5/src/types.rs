@@ -196,6 +196,12 @@ impl PacketSize for TopicFilter {
     }
 }
 
+impl PacketSize for Vec<TopicFilter> {
+    fn calc_size(&self) -> u32 {
+        self.iter().map(|x| x.calc_size()).sum()
+    }
+}
+
 #[repr(u8)]
 #[derive(Debug, TryFromPrimitive)]
 pub enum PacketType {
@@ -1037,7 +1043,7 @@ pub struct UnsubscribePacket {
     pub user_properties: Vec<UserProperty>,
 
     // Payload
-    pub topics: Vec<String>,
+    pub topic_filters: Vec<TopicFilter>,
 }
 
 impl PropertySize for UnsubscribePacket {
@@ -1306,7 +1312,7 @@ impl PacketSize for Packet {
                 let property_size = p.property_size();
                 size += property_size + VariableByteInt(property_size).calc_size();
 
-                size += p.topics.calc_size();
+                size += p.topic_filters.calc_size();
 
                 size
             },

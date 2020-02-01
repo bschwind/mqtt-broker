@@ -883,7 +883,7 @@ fn decode_unsubscribe(
     }
     let payload_size = remaining_packet_length - variable_header_size;
 
-    let mut topics = vec![];
+    let mut topic_filters = vec![];
     let mut bytes_read: usize = 0;
 
     loop {
@@ -893,14 +893,16 @@ fn decode_unsubscribe(
 
         let start_cursor_pos = bytes.position();
 
-        let topic = read_string!(bytes);
-        topics.push(topic);
+        let topic_filter_str = read_string!(bytes);
+        let topic_filter =
+            topic_filter_str.parse().map_err(|e| DecodeError::InvalidTopicFilter(e))?;
+        topic_filters.push(topic_filter);
 
         let end_cursor_pos = bytes.position();
         bytes_read += (end_cursor_pos - start_cursor_pos) as usize;
     }
 
-    let packet = UnsubscribePacket { packet_id, user_properties, topics };
+    let packet = UnsubscribePacket { packet_id, user_properties, topic_filters };
 
     Ok(Some(Packet::Unsubscribe(packet)))
 }
