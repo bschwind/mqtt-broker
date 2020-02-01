@@ -533,7 +533,9 @@ fn decode_publish(
     // Variable header start
     let start_cursor_pos = bytes.position();
 
-    let topic_name = read_string!(bytes);
+    let topic_str = read_string!(bytes);
+    let topic = topic_str.parse().map_err(|e| DecodeError::InvalidTopic(e))?;
+
     let packet_id = match qos {
         QoS::AtMostOnce => None,
         QoS::AtLeastOnce | QoS::ExactlyOnce => Some(read_u16!(bytes)),
@@ -577,7 +579,7 @@ fn decode_publish(
         qos,
         retain,
 
-        topic_name,
+        topic,
         packet_id,
 
         payload_format_indicator,
@@ -781,7 +783,10 @@ fn decode_subscribe(
 
         let start_cursor_pos = bytes.position();
 
-        let topic = read_string!(bytes);
+        let topic_filter_str = read_string!(bytes);
+        let topic_filter =
+            topic_filter_str.parse().map_err(|e| DecodeError::InvalidTopicFilter(e))?;
+
         let options_byte = read_u8!(bytes);
 
         let maximum_qos_val = options_byte & 0b0000_0011;
@@ -795,7 +800,7 @@ fn decode_subscribe(
         let no_local = (options_byte & 0b0000_0100) == 0b0000_0100;
 
         let subscription_topic = SubscriptionTopic {
-            topic,
+            topic_filter,
             maximum_qos,
             no_local,
             retain_as_published,

@@ -1,15 +1,15 @@
 use crate::client::ClientMessage;
 use mqtt_v5::types::{
     properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, ProtocolVersion,
-    SubscribeAckPacket, SubscribeAckReason, SubscribePacket, SubscriptionTopic,
+    SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 pub struct Session {
     pub protocol_version: ProtocolVersion,
-    pub subscriptions: HashSet<SubscriptionTopic>,
-    pub shared_subscriptions: HashSet<SubscriptionTopic>,
+    // pub subscriptions: HashSet<SubscriptionTopic>,
+    // pub shared_subscriptions: HashSet<SubscriptionTopic>,
     pub client_sender: Sender<ClientMessage>,
 }
 
@@ -17,8 +17,8 @@ impl Session {
     pub fn new(protocol_version: ProtocolVersion, client_sender: Sender<ClientMessage>) -> Self {
         Self {
             protocol_version,
-            subscriptions: HashSet::new(),
-            shared_subscriptions: HashSet::new(),
+            // subscriptions: HashSet::new(),
+            // shared_subscriptions: HashSet::new(),
             client_sender,
         }
     }

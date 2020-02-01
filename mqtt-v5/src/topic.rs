@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 /// A filter for subscribers to indicate which topics they want
 /// to receive messages from. Can contain wildcards.
+/// Shared topic filter example: $share/group_name_a/home/kitchen/temperature
 #[derive(Debug, PartialEq)]
 pub enum TopicFilter {
     Concrete { filter: String, level_count: u32 },
@@ -20,6 +21,12 @@ pub enum TopicFilter {
 pub struct Topic {
     topic_name: String,
     level_count: u32,
+}
+
+impl Topic {
+    pub fn topic_name(&self) -> &str {
+        &self.topic_name
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,6 +45,26 @@ pub enum TopicParseError {
     InvalidSharedGroupName,
     EmptySharedGroupName,
     WildcardOrNullInTopic,
+}
+
+impl std::fmt::Display for Topic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.topic_name)
+    }
+}
+
+impl std::fmt::Display for TopicFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TopicFilter::Concrete { filter, .. } | TopicFilter::Wildcard { filter, .. } => {
+                write!(f, "{}", filter)
+            },
+            TopicFilter::SharedConcrete { group_name, filter, .. }
+            | TopicFilter::SharedWildcard { group_name, filter, .. } => {
+                write!(f, "{}{}/{}", SHARED_SUBSCRIPTION_PREFIX, group_name, filter)
+            },
+        }
+    }
 }
 
 /// If Ok, returns (level_count, contains_wildcards).

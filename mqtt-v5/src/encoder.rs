@@ -307,7 +307,7 @@ fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) {
 }
 
 fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut) {
-    encode_string(&packet.topic_name, bytes);
+    encode_string(&packet.topic.to_string(), bytes);
 
     if let Some(packet_id) = packet.packet_id {
         bytes.put_u16(packet_id);
@@ -382,7 +382,7 @@ fn encode_subscribe(packet: &SubscribePacket, bytes: &mut BytesMut) {
     packet.user_properties.encode(bytes);
 
     for topic in &packet.subscription_topics {
-        encode_string(&topic.topic, bytes);
+        encode_string(&topic.topic_filter.to_string(), bytes);
 
         let mut options_byte = 0b0000_0000;
         let retain_handling_byte = topic.retain_handling as u8;
@@ -574,7 +574,7 @@ mod tests {
             qos: QoS::AtLeastOnce,
             retain: false,
 
-            topic_name: "test_topic".to_string(),
+            topic: "test_topic".parse().unwrap(),
             packet_id: Some(42),
 
             payload_format_indicator: None,
@@ -673,7 +673,7 @@ mod tests {
             user_properties: vec![],
 
             subscription_topics: vec![SubscriptionTopic {
-                topic: "test_topic".to_string(),
+                topic_filter: "test_topic".parse().unwrap(),
                 maximum_qos: QoS::AtLeastOnce,
                 no_local: false,
                 retain_as_published: false,

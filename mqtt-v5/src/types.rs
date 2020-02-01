@@ -1,3 +1,7 @@
+use crate::{
+    topic::{Topic, TopicFilter, TopicParseError},
+    SHARED_SUBSCRIPTION_PREFIX,
+};
 use bytes::{BufMut, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
@@ -22,6 +26,8 @@ pub enum DecodeError {
     InvalidAuthenticateReason,
     InvalidPropertyId,
     InvalidPropertyForPacket,
+    InvalidTopic(TopicParseError),
+    InvalidTopicFilter(TopicParseError),
     Io(std::io::Error),
 }
 
@@ -125,6 +131,12 @@ impl PacketSize for String {
     }
 }
 
+impl PacketSize for &str {
+    fn calc_size(&self) -> u32 {
+        2 + self.len() as u32
+    }
+}
+
 impl PacketSize for &[u8] {
     fn calc_size(&self) -> u32 {
         2 + self.len() as u32
@@ -160,6 +172,26 @@ impl<T: PacketSize> PacketSize for Option<T> {
         match self {
             Some(p) => p.calc_size(),
             None => 0,
+        }
+    }
+}
+
+impl PacketSize for Topic {
+    fn calc_size(&self) -> u32 {
+        self.topic_name().calc_size()
+    }
+}
+
+impl PacketSize for TopicFilter {
+    fn calc_size(&self) -> u32 {
+        match self {
+            TopicFilter::Concrete { filter, .. } | TopicFilter::Wildcard { filter, .. } => {
+                filter.calc_size()
+            },
+            TopicFilter::SharedConcrete { group_name, filter, .. }
+            | TopicFilter::SharedWildcard { group_name, filter, .. } => {
+                (2 + SHARED_SUBSCRIPTION_PREFIX.len() + group_name.len() + 1 + filter.len()) as u32
+            },
         }
     }
 }
@@ -715,9 +747,9 @@ impl PropertySize for FinalWill {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq)]
 pub struct SubscriptionTopic {
-    pub topic: String,
+    pub topic_filter: TopicFilter,
     pub maximum_qos: QoS,
     pub no_local: bool,
     pub retain_as_published: bool,
@@ -726,7 +758,7 @@ pub struct SubscriptionTopic {
 
 impl PacketSize for SubscriptionTopic {
     fn calc_size(&self) -> u32 {
-        self.topic.calc_size() + 1
+        self.topic_filter.calc_size() + 1
     }
 }
 
@@ -833,7 +865,7 @@ pub struct PublishPacket {
     pub retain: bool,
 
     // Variable header
-    pub topic_name: String,
+    pub topic: Topic,
     pub packet_id: Option<u16>,
 
     // Properties
@@ -1198,7 +1230,7 @@ impl PacketSize for Packet {
                 size
             },
             Packet::Publish(p) => {
-                let mut size = p.topic_name.calc_size();
+                let mut size = p.topic.calc_size();
                 size += p.packet_id.calc_size();
 
                 let property_size = p.property_size();
