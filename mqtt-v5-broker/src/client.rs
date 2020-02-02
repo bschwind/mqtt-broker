@@ -111,8 +111,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
         while let Some(frame) = stream.next().await {
             match frame {
                 Ok(frame) => {
-                    println!("Got a frame: {:#?}", frame);
-
                     match frame {
                         Packet::Subscribe(packet) => {
                             broker_tx
