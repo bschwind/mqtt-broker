@@ -45,7 +45,7 @@ pub mod codec {
         }
 
         pub fn encode(&mut self, packet: Packet, bytes: &mut BytesMut) -> Result<(), DecodeError> {
-            encoder::encode_mqtt(&packet, bytes);
+            encoder::encode_mqtt(&packet, bytes, self.version);
             Ok(())
         }
     }

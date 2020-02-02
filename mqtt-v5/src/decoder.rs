@@ -449,7 +449,10 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
     Ok(Some(Packet::Connect(packet)))
 }
 
-fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, DecodeError> {
+fn decode_connect_ack(
+    bytes: &mut Cursor<&mut BytesMut>,
+    protocol_version: ProtocolVersion,
+) -> Result<Option<Packet>, DecodeError> {
     let flags = read_u8!(bytes);
     let session_present = (flags & 0b0000_0001) == 0b0000_0001;
 
@@ -475,30 +478,34 @@ fn decode_connect_ack(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet
     let mut authentication_method = None;
     let mut authentication_data = None;
 
-    return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
-            Property::ReceiveMaximum(p) => receive_maximum = Some(p),
-            Property::MaximumQos(p) => maximum_qos = Some(p),
-            Property::RetainAvailable(p) => retain_available = Some(p),
-            Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
-            Property::AssignedClientIdentifier(p) => assigned_client_identifier = Some(p),
-            Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
-            Property::ReasonString(p) => reason_string = Some(p),
-            Property::UserProperty(p) => user_properties.push(p),
-            Property::WildcardSubscriptionAvailable(p) => wildcard_subscription_available = Some(p),
-            Property::SubscriptionIdentifierAvailable(p) => {
-                subscription_identifiers_available = Some(p)
-            },
-            Property::SharedSubscriptionAvailable(p) => shared_subscription_available = Some(p),
-            Property::ServerKeepAlive(p) => server_keep_alive = Some(p),
-            Property::ResponseInformation(p) => response_information = Some(p),
-            Property::ServerReference(p) => server_reference = Some(p),
-            Property::AuthenticationMethod(p) => authentication_method = Some(p),
-            Property::AuthenticationData(p) => authentication_data = Some(p),
-            _ => {}, // Invalid property for packet
-        }
-    })?);
+    if protocol_version == ProtocolVersion::V500 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
+                Property::ReceiveMaximum(p) => receive_maximum = Some(p),
+                Property::MaximumQos(p) => maximum_qos = Some(p),
+                Property::RetainAvailable(p) => retain_available = Some(p),
+                Property::MaximumPacketSize(p) => maximum_packet_size = Some(p),
+                Property::AssignedClientIdentifier(p) => assigned_client_identifier = Some(p),
+                Property::TopicAliasMaximum(p) => topic_alias_maximum = Some(p),
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                Property::WildcardSubscriptionAvailable(p) => {
+                    wildcard_subscription_available = Some(p)
+                },
+                Property::SubscriptionIdentifierAvailable(p) => {
+                    subscription_identifiers_available = Some(p)
+                },
+                Property::SharedSubscriptionAvailable(p) => shared_subscription_available = Some(p),
+                Property::ServerKeepAlive(p) => server_keep_alive = Some(p),
+                Property::ResponseInformation(p) => response_information = Some(p),
+                Property::ServerReference(p) => server_reference = Some(p),
+                Property::AuthenticationMethod(p) => authentication_method = Some(p),
+                Property::AuthenticationData(p) => authentication_data = Some(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
 
     let packet = ConnectAckPacket {
         session_present,
@@ -608,6 +615,7 @@ fn decode_publish(
 fn decode_publish_ack(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
 
@@ -627,7 +635,7 @@ fn decode_publish_ack(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    if remaining_packet_length >= 4 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 4 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::ReasonString(p) => reason_string = Some(p),
@@ -645,6 +653,7 @@ fn decode_publish_ack(
 fn decode_publish_received(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
 
@@ -664,7 +673,7 @@ fn decode_publish_received(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    if remaining_packet_length >= 4 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 4 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::ReasonString(p) => reason_string = Some(p),
@@ -682,6 +691,7 @@ fn decode_publish_received(
 fn decode_publish_release(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
 
@@ -701,7 +711,7 @@ fn decode_publish_release(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    if remaining_packet_length >= 4 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 4 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::ReasonString(p) => reason_string = Some(p),
@@ -719,6 +729,7 @@ fn decode_publish_release(
 fn decode_publish_complete(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let packet_id = read_u16!(bytes);
 
@@ -738,7 +749,7 @@ fn decode_publish_complete(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    if remaining_packet_length >= 4 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 4 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::ReasonString(p) => reason_string = Some(p),
@@ -834,6 +845,7 @@ fn decode_subscribe(
 fn decode_subscribe_ack(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let start_cursor_pos = bytes.position();
 
@@ -842,13 +854,15 @@ fn decode_subscribe_ack(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::ReasonString(p) => reason_string = Some(p),
-            Property::UserProperty(p) => user_properties.push(p),
-            _ => {}, // Invalid property for packet
-        }
-    })?);
+    if protocol_version == ProtocolVersion::V500 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
 
     let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
     if remaining_packet_length < variable_header_size {
@@ -872,6 +886,7 @@ fn decode_subscribe_ack(
 fn decode_unsubscribe(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let start_cursor_pos = bytes.position();
 
@@ -879,11 +894,13 @@ fn decode_unsubscribe(
 
     let mut user_properties = vec![];
 
-    return_if_none!(decode_properties(bytes, |property| {
-        if let Property::UserProperty(p) = property {
-            user_properties.push(p);
-        }
-    })?);
+    if protocol_version == ProtocolVersion::V500 {
+        return_if_none!(decode_properties(bytes, |property| {
+            if let Property::UserProperty(p) = property {
+                user_properties.push(p);
+            }
+        })?);
+    }
 
     let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
     if remaining_packet_length < variable_header_size {
@@ -918,6 +935,7 @@ fn decode_unsubscribe(
 fn decode_unsubscribe_ack(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     let start_cursor_pos = bytes.position();
 
@@ -926,13 +944,15 @@ fn decode_unsubscribe_ack(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    return_if_none!(decode_properties(bytes, |property| {
-        match property {
-            Property::ReasonString(p) => reason_string = Some(p),
-            Property::UserProperty(p) => user_properties.push(p),
-            _ => {}, // Invalid property for packet
-        }
-    })?);
+    if protocol_version == ProtocolVersion::V500 {
+        return_if_none!(decode_properties(bytes, |property| {
+            match property {
+                Property::ReasonString(p) => reason_string = Some(p),
+                Property::UserProperty(p) => user_properties.push(p),
+                _ => {}, // Invalid property for packet
+            }
+        })?);
+    }
 
     let variable_header_size = (bytes.position() - start_cursor_pos) as u32;
     if remaining_packet_length < variable_header_size {
@@ -956,6 +976,7 @@ fn decode_unsubscribe_ack(
 fn decode_disconnect(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     if remaining_packet_length == 0 {
         return Ok(Some(Packet::Disconnect(DisconnectPacket {
@@ -976,7 +997,7 @@ fn decode_disconnect(
     let mut user_properties = vec![];
     let mut server_reference = None;
 
-    if remaining_packet_length >= 2 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 2 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::SessionExpiryInterval(p) => session_expiry_interval = Some(p),
@@ -1002,6 +1023,7 @@ fn decode_disconnect(
 fn decode_authenticate(
     bytes: &mut Cursor<&mut BytesMut>,
     remaining_packet_length: u32,
+    protocol_version: ProtocolVersion,
 ) -> Result<Option<Packet>, DecodeError> {
     if remaining_packet_length == 0 {
         return Ok(Some(Packet::Authenticate(AuthenticatePacket {
@@ -1022,7 +1044,7 @@ fn decode_authenticate(
     let mut reason_string = None;
     let mut user_properties = vec![];
 
-    if remaining_packet_length >= 2 {
+    if protocol_version == ProtocolVersion::V500 && remaining_packet_length >= 2 {
         return_if_none!(decode_properties(bytes, |property| {
             match property {
                 Property::AuthenticationMethod(p) => authentication_method = Some(p),
@@ -1054,22 +1076,40 @@ fn decode_packet(
 ) -> Result<Option<Packet>, DecodeError> {
     match packet_type {
         PacketType::Connect => decode_connect(bytes),
-        PacketType::ConnectAck => decode_connect_ack(bytes),
+        PacketType::ConnectAck => decode_connect_ack(bytes, protocol_version),
         PacketType::Publish => {
             decode_publish(bytes, first_byte, remaining_packet_length, protocol_version)
         },
-        PacketType::PublishAck => decode_publish_ack(bytes, remaining_packet_length),
-        PacketType::PublishReceived => decode_publish_received(bytes, remaining_packet_length),
-        PacketType::PublishRelease => decode_publish_release(bytes, remaining_packet_length),
-        PacketType::PublishComplete => decode_publish_complete(bytes, remaining_packet_length),
+        PacketType::PublishAck => {
+            decode_publish_ack(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::PublishReceived => {
+            decode_publish_received(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::PublishRelease => {
+            decode_publish_release(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::PublishComplete => {
+            decode_publish_complete(bytes, remaining_packet_length, protocol_version)
+        },
         PacketType::Subscribe => decode_subscribe(bytes, remaining_packet_length, protocol_version),
-        PacketType::SubscribeAck => decode_subscribe_ack(bytes, remaining_packet_length),
-        PacketType::Unsubscribe => decode_unsubscribe(bytes, remaining_packet_length),
-        PacketType::UnsubscribeAck => decode_unsubscribe_ack(bytes, remaining_packet_length),
+        PacketType::SubscribeAck => {
+            decode_subscribe_ack(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::Unsubscribe => {
+            decode_unsubscribe(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::UnsubscribeAck => {
+            decode_unsubscribe_ack(bytes, remaining_packet_length, protocol_version)
+        },
         PacketType::PingRequest => Ok(Some(Packet::PingRequest)),
         PacketType::PingResponse => Ok(Some(Packet::PingResponse)),
-        PacketType::Disconnect => decode_disconnect(bytes, remaining_packet_length),
-        PacketType::Authenticate => decode_authenticate(bytes, remaining_packet_length),
+        PacketType::Disconnect => {
+            decode_disconnect(bytes, remaining_packet_length, protocol_version)
+        },
+        PacketType::Authenticate => {
+            decode_authenticate(bytes, remaining_packet_length, protocol_version)
+        },
     }
 }
 

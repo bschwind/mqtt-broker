@@ -1,6 +1,6 @@
 use crate::types::{
     properties::*, AuthenticatePacket, ConnectAckPacket, ConnectPacket, DisconnectPacket, Encode,
-    Packet, PropertySize, PublishAckPacket, PublishCompletePacket, PublishPacket,
+    Packet, PropertySize, ProtocolVersion, PublishAckPacket, PublishCompletePacket, PublishPacket,
     PublishReceivedPacket, PublishReleasePacket, SubscribeAckPacket, SubscribePacket,
     UnsubscribeAckPacket, UnsubscribePacket, VariableByteInt,
 };
@@ -204,7 +204,7 @@ impl Encode for SharedSubscriptionAvailable {
     }
 }
 
-fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut) {
+fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut, protocol_version: ProtocolVersion) {
     encode_string(&packet.protocol_name, bytes);
     bytes.put_u8(packet.protocol_version as u8);
 
@@ -235,32 +235,36 @@ fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut) {
     bytes.put_u8(connect_flags);
     bytes.put_u16(packet.keep_alive);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.session_expiry_interval.encode(bytes);
-    packet.receive_maximum.encode(bytes);
-    packet.maximum_packet_size.encode(bytes);
-    packet.topic_alias_maximum.encode(bytes);
-    packet.request_response_information.encode(bytes);
-    packet.request_problem_information.encode(bytes);
-    packet.user_properties.encode(bytes);
-    packet.authentication_method.encode(bytes);
-    packet.authentication_data.encode(bytes);
+        packet.session_expiry_interval.encode(bytes);
+        packet.receive_maximum.encode(bytes);
+        packet.maximum_packet_size.encode(bytes);
+        packet.topic_alias_maximum.encode(bytes);
+        packet.request_response_information.encode(bytes);
+        packet.request_problem_information.encode(bytes);
+        packet.user_properties.encode(bytes);
+        packet.authentication_method.encode(bytes);
+        packet.authentication_data.encode(bytes);
+    }
 
     encode_string(&packet.client_id, bytes);
 
     if let Some(will) = &packet.will {
-        let property_length = will.property_size();
-        encode_variable_int(property_length, bytes);
+        if protocol_version == ProtocolVersion::V500 {
+            let property_length = will.property_size(protocol_version);
+            encode_variable_int(property_length, bytes);
 
-        will.will_delay_interval.encode(bytes);
-        will.payload_format_indicator.encode(bytes);
-        will.message_expiry_interval.encode(bytes);
-        will.content_type.encode(bytes);
-        will.response_topic.encode(bytes);
-        will.correlation_data.encode(bytes);
-        will.user_properties.encode(bytes);
+            will.will_delay_interval.encode(bytes);
+            will.payload_format_indicator.encode(bytes);
+            will.message_expiry_interval.encode(bytes);
+            will.content_type.encode(bytes);
+            will.response_topic.encode(bytes);
+            will.correlation_data.encode(bytes);
+            will.user_properties.encode(bytes);
+        }
 
         encode_string(&will.topic, bytes);
         encode_binary_data(&will.payload, bytes);
@@ -275,7 +279,11 @@ fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut) {
     }
 }
 
-fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) {
+fn encode_connect_ack(
+    packet: &ConnectAckPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     let mut connect_ack_flags: u8 = 0b0000_0000;
     if packet.session_present {
         connect_ack_flags |= 0b0000_0001;
@@ -284,102 +292,138 @@ fn encode_connect_ack(packet: &ConnectAckPacket, bytes: &mut BytesMut) {
     bytes.put_u8(connect_ack_flags);
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.session_expiry_interval.encode(bytes);
-    packet.receive_maximum.encode(bytes);
-    packet.maximum_qos.encode(bytes);
-    packet.retain_available.encode(bytes);
-    packet.maximum_packet_size.encode(bytes);
-    packet.assigned_client_identifier.encode(bytes);
-    packet.topic_alias_maximum.encode(bytes);
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
-    packet.wildcard_subscription_available.encode(bytes);
-    packet.subscription_identifiers_available.encode(bytes);
-    packet.shared_subscription_available.encode(bytes);
-    packet.server_keep_alive.encode(bytes);
-    packet.response_information.encode(bytes);
-    packet.server_reference.encode(bytes);
-    packet.authentication_method.encode(bytes);
-    packet.authentication_data.encode(bytes);
+        packet.session_expiry_interval.encode(bytes);
+        packet.receive_maximum.encode(bytes);
+        packet.maximum_qos.encode(bytes);
+        packet.retain_available.encode(bytes);
+        packet.maximum_packet_size.encode(bytes);
+        packet.assigned_client_identifier.encode(bytes);
+        packet.topic_alias_maximum.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+        packet.wildcard_subscription_available.encode(bytes);
+        packet.subscription_identifiers_available.encode(bytes);
+        packet.shared_subscription_available.encode(bytes);
+        packet.server_keep_alive.encode(bytes);
+        packet.response_information.encode(bytes);
+        packet.server_reference.encode(bytes);
+        packet.authentication_method.encode(bytes);
+        packet.authentication_data.encode(bytes);
+    } else {
+        encode_variable_int(0, bytes);
+    }
 }
 
-fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut) {
+fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut, protocol_version: ProtocolVersion) {
     encode_string(&packet.topic.to_string(), bytes);
 
     if let Some(packet_id) = packet.packet_id {
         bytes.put_u16(packet_id);
     }
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.payload_format_indicator.encode(bytes);
-    packet.message_expiry_interval.encode(bytes);
-    packet.topic_alias.encode(bytes);
-    packet.response_topic.encode(bytes);
-    packet.correlation_data.encode(bytes);
-    packet.user_properties.encode(bytes);
-    packet.subscription_identifier.encode(bytes);
-    packet.content_type.encode(bytes);
+        packet.payload_format_indicator.encode(bytes);
+        packet.message_expiry_interval.encode(bytes);
+        packet.topic_alias.encode(bytes);
+        packet.response_topic.encode(bytes);
+        packet.correlation_data.encode(bytes);
+        packet.user_properties.encode(bytes);
+        packet.subscription_identifier.encode(bytes);
+        packet.content_type.encode(bytes);
+    }
 
     bytes.put_slice(&packet.payload);
 }
 
-fn encode_publish_ack(packet: &PublishAckPacket, bytes: &mut BytesMut) {
+fn encode_publish_ack(
+    packet: &PublishAckPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 }
 
-fn encode_publish_received(packet: &PublishReceivedPacket, bytes: &mut BytesMut) {
+fn encode_publish_received(
+    packet: &PublishReceivedPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 }
 
-fn encode_publish_release(packet: &PublishReleasePacket, bytes: &mut BytesMut) {
+fn encode_publish_release(
+    packet: &PublishReleasePacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 }
 
-fn encode_publish_complete(packet: &PublishCompletePacket, bytes: &mut BytesMut) {
+fn encode_publish_complete(
+    packet: &PublishCompletePacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 }
 
-fn encode_subscribe(packet: &SubscribePacket, bytes: &mut BytesMut) {
+fn encode_subscribe(
+    packet: &SubscribePacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.subscription_identifier.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.subscription_identifier.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 
     for topic in &packet.subscription_topics {
         encode_string(&topic.topic_filter.to_string(), bytes);
@@ -403,74 +447,105 @@ fn encode_subscribe(packet: &SubscribePacket, bytes: &mut BytesMut) {
     }
 }
 
-fn encode_subscribe_ack(packet: &SubscribeAckPacket, bytes: &mut BytesMut) {
+fn encode_subscribe_ack(
+    packet: &SubscribeAckPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 
     for code in &packet.reason_codes {
         bytes.put_u8((*code) as u8);
     }
 }
 
-fn encode_unsubscribe(packet: &UnsubscribePacket, bytes: &mut BytesMut) {
+fn encode_unsubscribe(
+    packet: &UnsubscribePacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.user_properties.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 
     for topic_filter in &packet.topic_filters {
         encode_string(&topic_filter.to_string(), bytes);
     }
 }
 
-fn encode_unsubscribe_ack(packet: &UnsubscribeAckPacket, bytes: &mut BytesMut) {
+fn encode_unsubscribe_ack(
+    packet: &UnsubscribeAckPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u16(packet.packet_id);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 
     for code in &packet.reason_codes {
         bytes.put_u8((*code) as u8);
     }
 }
 
-fn encode_disconnect(packet: &DisconnectPacket, bytes: &mut BytesMut) {
+fn encode_disconnect(
+    packet: &DisconnectPacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.session_expiry_interval.encode(bytes);
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
-    packet.server_reference.encode(bytes);
+        packet.session_expiry_interval.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+        packet.server_reference.encode(bytes);
+    }
 }
 
-fn encode_authenticate(packet: &AuthenticatePacket, bytes: &mut BytesMut) {
+fn encode_authenticate(
+    packet: &AuthenticatePacket,
+    bytes: &mut BytesMut,
+    protocol_version: ProtocolVersion,
+) {
     bytes.put_u8(packet.reason_code as u8);
 
-    let property_length = packet.property_size();
-    encode_variable_int(property_length, bytes);
+    if protocol_version == ProtocolVersion::V500 {
+        let property_length = packet.property_size(protocol_version);
+        encode_variable_int(property_length, bytes);
 
-    packet.authentication_method.encode(bytes);
-    packet.authentication_data.encode(bytes);
-    packet.reason_string.encode(bytes);
-    packet.user_properties.encode(bytes);
+        packet.authentication_method.encode(bytes);
+        packet.authentication_data.encode(bytes);
+        packet.reason_string.encode(bytes);
+        packet.user_properties.encode(bytes);
+    }
 }
 
-pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
-    let remaining_length = packet.calculate_size();
-    let packet_size = 1 + VariableByteInt(remaining_length).calculate_size() + remaining_length;
+pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut, protocol_version: ProtocolVersion) {
+    let remaining_length = packet.calculate_size(protocol_version);
+    let packet_size =
+        1 + VariableByteInt(remaining_length).calculate_size(protocol_version) + remaining_length;
     bytes.reserve(packet_size as usize);
 
     let first_byte = packet.to_byte();
@@ -481,21 +556,21 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut) {
     encode_variable_int(remaining_length as u32, bytes);
 
     match packet {
-        Packet::Connect(p) => encode_connect(p, bytes),
-        Packet::ConnectAck(p) => encode_connect_ack(p, bytes),
-        Packet::Publish(p) => encode_publish(p, bytes),
-        Packet::PublishAck(p) => encode_publish_ack(p, bytes),
-        Packet::PublishReceived(p) => encode_publish_received(p, bytes),
-        Packet::PublishRelease(p) => encode_publish_release(p, bytes),
-        Packet::PublishComplete(p) => encode_publish_complete(p, bytes),
-        Packet::Subscribe(p) => encode_subscribe(p, bytes),
-        Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes),
-        Packet::Unsubscribe(p) => encode_unsubscribe(p, bytes),
-        Packet::UnsubscribeAck(p) => encode_unsubscribe_ack(p, bytes),
+        Packet::Connect(p) => encode_connect(p, bytes, protocol_version),
+        Packet::ConnectAck(p) => encode_connect_ack(p, bytes, protocol_version),
+        Packet::Publish(p) => encode_publish(p, bytes, protocol_version),
+        Packet::PublishAck(p) => encode_publish_ack(p, bytes, protocol_version),
+        Packet::PublishReceived(p) => encode_publish_received(p, bytes, protocol_version),
+        Packet::PublishRelease(p) => encode_publish_release(p, bytes, protocol_version),
+        Packet::PublishComplete(p) => encode_publish_complete(p, bytes, protocol_version),
+        Packet::Subscribe(p) => encode_subscribe(p, bytes, protocol_version),
+        Packet::SubscribeAck(p) => encode_subscribe_ack(p, bytes, protocol_version),
+        Packet::Unsubscribe(p) => encode_unsubscribe(p, bytes, protocol_version),
+        Packet::UnsubscribeAck(p) => encode_unsubscribe_ack(p, bytes, protocol_version),
         Packet::PingRequest => {},
         Packet::PingResponse => {},
-        Packet::Disconnect(p) => encode_disconnect(p, bytes),
-        Packet::Authenticate(p) => encode_authenticate(p, bytes),
+        Packet::Disconnect(p) => encode_disconnect(p, bytes, protocol_version),
+        Packet::Authenticate(p) => encode_authenticate(p, bytes, protocol_version),
     }
 }
 
@@ -529,7 +604,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -561,7 +636,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -590,7 +665,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -607,7 +682,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -624,7 +699,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -641,7 +716,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -658,7 +733,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -682,7 +757,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -700,7 +775,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -717,7 +792,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -735,7 +810,7 @@ mod tests {
         });
 
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -745,7 +820,7 @@ mod tests {
     fn ping_request_roundtrip() {
         let packet = Packet::PingRequest;
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -755,7 +830,7 @@ mod tests {
     fn ping_response_roundtrip() {
         let packet = Packet::PingResponse;
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -772,7 +847,7 @@ mod tests {
             server_reference: None,
         });
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);
@@ -789,7 +864,7 @@ mod tests {
             user_properties: vec![],
         });
         let mut bytes = BytesMut::new();
-        encode_mqtt(&packet, &mut bytes);
+        encode_mqtt(&packet, &mut bytes, ProtocolVersion::V500);
         let decoded = decode_mqtt(&mut bytes, ProtocolVersion::V500).unwrap().unwrap();
 
         assert_eq!(packet, decoded);

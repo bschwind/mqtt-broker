@@ -110,28 +110,26 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
     ) {
         while let Some(frame) = stream.next().await {
             match frame {
-                Ok(frame) => {
-                    match frame {
-                        Packet::Subscribe(packet) => {
-                            broker_tx
-                                .send(BrokerMessage::Subscribe(client_id.clone(), packet))
-                                .await
-                                .expect("Couldn't send Subscribe message to broker");
-                        },
-                        Packet::Publish(packet) => {
-                            broker_tx
-                                .send(BrokerMessage::Publish(client_id.clone(), packet))
-                                .await
-                                .expect("Couldn't send Publish message to broker");
-                        },
-                        Packet::PingRequest => {
-                            self_tx
-                                .send(ClientMessage::PingResponse)
-                                .await
-                                .expect("Couldn't send PingResponse message to self");
-                        },
-                        _ => {},
-                    }
+                Ok(frame) => match frame {
+                    Packet::Subscribe(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::Subscribe(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send Subscribe message to broker");
+                    },
+                    Packet::Publish(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::Publish(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send Publish message to broker");
+                    },
+                    Packet::PingRequest => {
+                        self_tx
+                            .send(ClientMessage::PingResponse)
+                            .await
+                            .expect("Couldn't send PingResponse message to self");
+                    },
+                    _ => {},
                 },
                 Err(err) => {
                     println!("Error while reading frame: {:?}", err);
