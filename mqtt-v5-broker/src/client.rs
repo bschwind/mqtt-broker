@@ -70,7 +70,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ClientMessage {
     Packet(Packet),
     PingResponse,

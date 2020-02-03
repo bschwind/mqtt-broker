@@ -175,13 +175,91 @@ impl Broker {
 
 #[cfg(test)]
 mod tests {
-    use crate::broker::Broker;
+    use crate::{
+        broker::{Broker, BrokerMessage},
+        client::ClientMessage,
+    };
+    use mqtt_v5::types::{properties::*, ProtocolVersion, *};
+    use tokio::{
+        runtime::Runtime,
+        sync::mpsc::{self, Sender},
+    };
+
+    async fn run_client(mut broker_tx: Sender<BrokerMessage>) {
+        let (sender, mut receiver) = mpsc::channel(5);
+        let _ = broker_tx
+            .send(BrokerMessage::NewClient("TEST".to_string(), ProtocolVersion::V500, sender))
+            .await
+            .unwrap();
+
+        let resp = receiver.recv().await.unwrap();
+
+        assert_eq!(
+            resp,
+            ClientMessage::Packet(Packet::ConnectAck(ConnectAckPacket {
+                session_present: false,
+                reason_code: ConnectReason::Success,
+
+                session_expiry_interval: None,
+                receive_maximum: None,
+                maximum_qos: None,
+                retain_available: None,
+                maximum_packet_size: None,
+                assigned_client_identifier: Some(AssignedClientIdentifier("TEST".to_string())),
+                topic_alias_maximum: None,
+                reason_string: None,
+                user_properties: vec![],
+                wildcard_subscription_available: None,
+                subscription_identifiers_available: None,
+                shared_subscription_available: None,
+                server_keep_alive: None,
+                response_information: None,
+                server_reference: None,
+                authentication_method: None,
+                authentication_data: None,
+            }))
+        );
+
+        let _ = broker_tx
+            .send(BrokerMessage::Subscribe(
+                "TEST".to_string(),
+                SubscribePacket {
+                    packet_id: 0,
+                    subscription_identifier: None,
+                    user_properties: vec![],
+                    subscription_topics: vec![SubscriptionTopic {
+                        topic_filter: "home/kitchen/temperature".parse().unwrap(),
+                        maximum_qos: QoS::AtMostOnce,
+                        no_local: false,
+                        retain_as_published: false,
+                        retain_handling: RetainHandling::DoNotSend,
+                    }],
+                },
+            ))
+            .await
+            .unwrap();
+
+        let resp = receiver.recv().await.unwrap();
+
+        assert_eq!(
+            resp,
+            ClientMessage::Packet(Packet::SubscribeAck(SubscribeAckPacket {
+                packet_id: 0,
+                reason_string: None,
+                user_properties: vec![],
+                reason_codes: vec![SubscribeAckReason::GrantedQoSOne,],
+            }))
+        );
+    }
 
     #[test]
-    fn do_stuff() {
+    fn simple_client_test() {
         let broker = Broker::new();
         let sender = broker.sender();
 
-        println!("hey");
+        let mut runtime = Runtime::new().unwrap();
+
+        runtime.spawn(broker.run());
+        runtime.block_on(run_client(sender));
     }
 }
