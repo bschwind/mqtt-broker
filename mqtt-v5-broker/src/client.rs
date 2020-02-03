@@ -73,7 +73,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
 #[derive(Debug, PartialEq)]
 pub enum ClientMessage {
     Packet(Packet),
-    PingResponse,
     Disconnect,
 }
 
@@ -121,7 +120,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
                     },
                     Packet::PingRequest => {
                         self_tx
-                            .send(ClientMessage::PingResponse)
+                            .send(ClientMessage::Packet(Packet::PingResponse))
                             .await
                             .expect("Couldn't send PingResponse message to self");
                     },
@@ -148,11 +147,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
             match frame {
                 ClientMessage::Packet(packet) => {
                     sink.send(packet).await.expect("Couldn't forward packet to framed socket");
-                },
-                ClientMessage::PingResponse => {
-                    sink.send(Packet::PingResponse)
-                        .await
-                        .expect("Couldn't forward packet to framed socket");
                 },
                 ClientMessage::Disconnect => println!("broker told the client to disconnect"),
             }
