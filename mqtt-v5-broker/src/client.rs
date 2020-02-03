@@ -5,9 +5,7 @@ use futures::{
 };
 use mqtt_v5::{
     codec::MqttCodec,
-    types::{
-        ConnectAckPacket, Packet, ProtocolError, ProtocolVersion, PublishPacket, SubscribeAckPacket,
-    },
+    types::{Packet, ProtocolError, ProtocolVersion},
 };
 use std::time::Duration;
 use tokio::{
@@ -74,9 +72,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
 
 #[derive(Debug)]
 pub enum ClientMessage {
-    ConnectAck(ConnectAckPacket),
-    SubscribeAck(SubscribeAckPacket),
-    Publish(PublishPacket),
+    Packet(Packet),
     PingResponse,
     Disconnect,
 }
@@ -150,20 +146,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
     ) {
         while let Some(frame) = broker_rx.recv().await {
             match frame {
-                ClientMessage::ConnectAck(packet) => {
-                    sink.send(Packet::ConnectAck(packet))
-                        .await
-                        .expect("Couldn't forward packet to framed socket");
-                },
-                ClientMessage::SubscribeAck(packet) => {
-                    sink.send(Packet::SubscribeAck(packet))
-                        .await
-                        .expect("Couldn't forward packet to framed socket");
-                },
-                ClientMessage::Publish(packet) => {
-                    sink.send(Packet::Publish(packet))
-                        .await
-                        .expect("Couldn't forward packet to framed socket");
+                ClientMessage::Packet(packet) => {
+                    sink.send(packet).await.expect("Couldn't forward packet to framed socket");
                 },
                 ClientMessage::PingResponse => {
                     sink.send(Packet::PingResponse)

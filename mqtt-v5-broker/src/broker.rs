@@ -2,8 +2,8 @@ use crate::{client::ClientMessage, tree::SubscriptionTree};
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
-        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, ProtocolVersion,
-        PublishPacket, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
+        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, Packet,
+        ProtocolVersion, PublishPacket, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
     },
 };
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ impl Broker {
             authentication_data: None,
         };
 
-        let _ = client_msg_sender.try_send(ClientMessage::ConnectAck(connect_ack));
+        let _ = client_msg_sender.try_send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)));
 
         self.sessions.insert(client_id, Session::new(protocol_version, client_msg_sender));
     }
@@ -122,7 +122,9 @@ impl Broker {
                     .collect(),
             };
 
-            let _ = session.client_sender.try_send(ClientMessage::SubscribeAck(subscribe_ack));
+            let _ = session
+                .client_sender
+                .try_send(ClientMessage::Packet(Packet::SubscribeAck(subscribe_ack)));
         }
     }
 
@@ -144,7 +146,9 @@ impl Broker {
 
         for client_id in clients {
             if let Some(session) = self.sessions.get_mut(&client_id) {
-                let _ = session.client_sender.try_send(ClientMessage::Publish(packet.clone()));
+                let _ = session
+                    .client_sender
+                    .try_send(ClientMessage::Packet(Packet::Publish(packet.clone())));
             }
         }
     }
