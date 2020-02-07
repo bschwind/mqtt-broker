@@ -2,6 +2,7 @@ use crate::{
     broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
 };
+use futures::StreamExt;
 use mqtt_v5::codec::MqttCodec;
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -17,8 +18,8 @@ mod tree;
 async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     println!("Handling a client");
 
-    let framed_sock = Framed::new(stream, MqttCodec::new());
-    let unconnected_client = UnconnectedClient::new(framed_sock, broker_tx);
+    let (sink, stream) = Framed::new(stream, MqttCodec::new()).split();
+    let unconnected_client = UnconnectedClient::new(stream, sink, broker_tx);
 
     let connected_client = match unconnected_client.handshake().await {
         Ok(connected_client) => connected_client,
