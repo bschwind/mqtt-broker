@@ -1,6 +1,6 @@
 use crate::broker::BrokerMessage;
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use mqtt_v5::types::{DecodeError, Packet, ProtocolError, ProtocolVersion};
+use mqtt_v5::types::{DecodeError, EncodeError, Packet, ProtocolError, ProtocolVersion};
 use std::{marker::Unpin, time::Duration};
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
@@ -9,13 +9,14 @@ use tokio::{
 
 type PacketResult = Result<Packet, DecodeError>;
 
-pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet>> {
+pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>>
+{
     packet_stream: ST,
     packet_sink: SI,
     broker_tx: Sender<BrokerMessage>,
 }
 
-impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = DecodeError> + Unpin>
+impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeError>>
     UnconnectedClient<ST, SI>
 {
     pub fn new(packet_stream: ST, packet_sink: SI, broker_tx: Sender<BrokerMessage>) -> Self {
@@ -74,7 +75,7 @@ pub enum ClientMessage {
     Disconnect,
 }
 
-pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet>> {
+pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>> {
     id: String,
     _protocol_version: ProtocolVersion,
     packet_stream: ST,
@@ -84,7 +85,7 @@ pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet>> {
     self_tx: Sender<ClientMessage>,
 }
 
-impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = DecodeError> + Unpin>
+impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeError>>
     Client<ST, SI>
 {
     pub fn new(
@@ -149,7 +150,9 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = DecodeErr
             .expect("Couldn't send Disconnect message to broker");
     }
 
-    async fn handle_socket_writes(mut sink: SI, mut broker_rx: Receiver<ClientMessage>) {
+    async fn handle_socket_writes(sink: SI, mut broker_rx: Receiver<ClientMessage>) {
+        futures::pin_mut!(sink);
+
         while let Some(frame) = broker_rx.recv().await {
             match frame {
                 ClientMessage::Packet(packet) => {

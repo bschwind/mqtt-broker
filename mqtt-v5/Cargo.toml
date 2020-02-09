@@ -9,10 +9,15 @@ authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"
 
 [features]
-default = ["codec"]
+default = ["codec", "websocket"]
 codec = ["tokio-util"]
+websocket = ["codec", "websocket-codec", "sha1", "base64"]
 
 [dependencies]
 bytes = "0.5.0"
-tokio-util = { optional = true, version = "0.2", features = ["codec"] }
 num_enum = "0.4"
+
+tokio-util = { optional = true, version = "0.2", features = ["codec"] }
+websocket-codec = { optional = true, version = "0.2.2" }
+sha1 = { optional = true, version = "0.6.0" }
+base64 = { optional = true, version = "0.11.0" }

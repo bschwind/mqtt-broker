@@ -138,7 +138,7 @@ impl Broker {
     }
 
     fn handle_publish(&mut self, _client_id: String, packet: PublishPacket) {
-        // TODO - Ideall we shouldn't allocate here
+        // TODO - Ideally we shouldn't allocate here
         let mut clients = vec![];
         self.subscriptions.matching_subscribers(&packet.topic, |client_id| {
             clients.push(client_id.clone());
