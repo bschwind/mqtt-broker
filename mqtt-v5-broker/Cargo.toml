@@ -14,4 +14,3 @@ tokio = { version = "0.2", features = ["tcp", "dns", "rt-threaded", "sync", "tim
 tokio-util = { version = "0.2", features = ["codec"] }
 mqtt-v5 = { path = "../mqtt-v5", version = "0.1.0" }
 futures = "0.3"
-websocket-codec = "0.2.2"

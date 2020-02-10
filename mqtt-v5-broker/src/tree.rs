@@ -264,6 +264,13 @@ mod tests {
 
         println!("{:#?}", sub_tree);
 
+        // TODO - this is currently failing, it should match 'home/#'
+        sub_tree.matching_subscribers(&"home".parse().unwrap(), |s| {
+            println!("{}", s);
+        });
+
+        println!();
+
         sub_tree.matching_subscribers(&"home/kitchen".parse().unwrap(), |s| {
             println!("{}", s);
         });

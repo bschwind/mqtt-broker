@@ -75,6 +75,8 @@ pub mod websocket {
     use bytes::BytesMut;
     use tokio_util::codec::{Decoder, Encoder};
 
+    pub use websocket_codec as codec;
+
     #[derive(Debug)]
     pub enum WsDecodeError {
         InvalidString,
@@ -110,7 +112,7 @@ pub mod websocket {
             Self {}
         }
 
-        pub fn validate_request_line(request_line: &str) -> Result<(), WsDecodeError> {
+        fn validate_request_line(request_line: &str) -> Result<(), WsDecodeError> {
             let mut request_parts = request_line.split_whitespace();
             let method = request_parts.next();
             let uri = request_parts.next();
@@ -146,7 +148,7 @@ pub mod websocket {
             return Ok(());
         }
 
-        pub fn validate_headers<'a>(
+        fn validate_headers<'a>(
             header_lines: impl Iterator<Item = &'a str>,
         ) -> Result<&'a str, WsDecodeError> {
             let mut websocket_key: Option<&'a str> = None;
@@ -236,9 +238,18 @@ pub mod websocket {
 
         fn encode(
             &mut self,
-            response: Self::Item,
+            websocket_key: Self::Item,
             bytes: &mut BytesMut,
         ) -> Result<(), Self::Error> {
+            let response = format!(
+                "HTTP/1.1 101 Switching Protocols\r\n\
+                Upgrade: websocket\r\n\
+                Connection: Upgrade\r\n\
+                Sec-WebSocket-Protocol: mqtt\r\n\
+                Sec-WebSocket-Accept: {}\r\n\r\n",
+                websocket_key
+            );
+
             bytes.extend_from_slice(response.as_bytes());
             Ok(())
         }
