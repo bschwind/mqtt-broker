@@ -118,7 +118,7 @@ impl Broker {
                 reason_codes: packet
                     .subscription_topics
                     .iter()
-                    .map(|_| SubscribeAckReason::GrantedQoSOne)
+                    .map(|_| SubscribeAckReason::GrantedQoSZero)
                     .collect(),
             };
 
