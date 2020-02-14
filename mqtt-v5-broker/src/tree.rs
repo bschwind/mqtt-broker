@@ -234,6 +234,11 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                         for (_, subscriber) in &sub_tree.subscribers {
                             sub_fn(subscriber);
                         }
+
+                        // TODO(bschwind) - Verify this works properly with better tests.
+                        for (_, subscriber) in &sub_tree.multi_level_wildcards {
+                            sub_fn(subscriber);
+                        }
                     }
                 }
             }
@@ -245,6 +250,7 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
 mod tests {
     use crate::tree::SubscriptionTree;
 
+    // TODO(bschwind) - Turn this into a test that properly asserts the subscriber values.
     #[test]
     fn test_insert() {
         let mut sub_tree = SubscriptionTree::new();
@@ -265,30 +271,35 @@ mod tests {
         println!("{:#?}", sub_tree);
 
         // TODO - this is currently failing, it should match 'home/#'
+        // 6, 12
         sub_tree.matching_subscribers(&"home".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 3, 5, 6, 12
         sub_tree.matching_subscribers(&"home/kitchen".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 2, 4, 6, 12
         sub_tree.matching_subscribers(&"home/kitchen/humidity".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 8, 9, 12
         sub_tree.matching_subscribers(&"office/stairwell/temperature".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 10, 11, 12
         sub_tree.matching_subscribers(
             &"office/tokyo/shibuya/some_desk/cpu_1/fan_speed/blade_4/temperature".parse().unwrap(),
             |s| {
@@ -298,24 +309,21 @@ mod tests {
 
         println!();
 
-        sub_tree.matching_subscribers(&"home".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
+        // 21, 12
         sub_tree.matching_subscribers(&"sport/tennis/player1".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 21, 12
         sub_tree.matching_subscribers(&"sport/tennis/player2".parse().unwrap(), |s| {
             println!("{}", s);
         });
 
         println!();
 
+        // 12
         sub_tree.matching_subscribers(&"sport/tennis/player1/ranking".parse().unwrap(), |s| {
             println!("{}", s);
         });
