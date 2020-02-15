@@ -271,7 +271,6 @@ mod tests {
 
         println!("{:#?}", sub_tree);
 
-        // TODO - this is currently failing, it should match 'home/#'
         // 6, 12
         sub_tree.matching_subscribers(&"home".parse().unwrap(), |s| {
             println!("{}", s);
