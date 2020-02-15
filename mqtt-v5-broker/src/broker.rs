@@ -242,7 +242,7 @@ mod tests {
                 packet_id: 0,
                 reason_string: None,
                 user_properties: vec![],
-                reason_codes: vec![SubscribeAckReason::GrantedQoSOne,],
+                reason_codes: vec![SubscribeAckReason::GrantedQoSZero,],
             }))
         );
     }
