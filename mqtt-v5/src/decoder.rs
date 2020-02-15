@@ -547,7 +547,7 @@ fn decode_publish(
     let start_cursor_pos = bytes.position();
 
     let topic_str = read_string!(bytes);
-    let topic = topic_str.parse().map_err(|e| DecodeError::InvalidTopic(e))?;
+    let topic = topic_str.parse().map_err(DecodeError::InvalidTopic)?;
 
     let packet_id = match qos {
         QoS::AtMostOnce => None,
@@ -803,8 +803,7 @@ fn decode_subscribe(
         let start_cursor_pos = bytes.position();
 
         let topic_filter_str = read_string!(bytes);
-        let topic_filter =
-            topic_filter_str.parse().map_err(|e| DecodeError::InvalidTopicFilter(e))?;
+        let topic_filter = topic_filter_str.parse().map_err(DecodeError::InvalidTopicFilter)?;
 
         let options_byte = read_u8!(bytes);
 
@@ -919,8 +918,7 @@ fn decode_unsubscribe(
         let start_cursor_pos = bytes.position();
 
         let topic_filter_str = read_string!(bytes);
-        let topic_filter =
-            topic_filter_str.parse().map_err(|e| DecodeError::InvalidTopicFilter(e))?;
+        let topic_filter = topic_filter_str.parse().map_err(DecodeError::InvalidTopicFilter)?;
         topic_filters.push(topic_filter);
 
         let end_cursor_pos = bytes.position();

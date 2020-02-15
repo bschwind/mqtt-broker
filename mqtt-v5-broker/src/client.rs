@@ -1,32 +1,30 @@
 use crate::broker::BrokerMessage;
-use futures::{
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
-};
-use mqtt_v5::{
-    codec::MqttCodec,
-    types::{Packet, ProtocolError, ProtocolVersion},
-};
-use std::time::Duration;
+use futures::{Sink, SinkExt, Stream, StreamExt};
+use mqtt_v5::types::{DecodeError, EncodeError, Packet, ProtocolError, ProtocolVersion};
+use std::{marker::Unpin, time::Duration};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
     sync::mpsc::{self, Receiver, Sender},
     time,
 };
-use tokio_util::codec::Framed;
 
-pub struct UnconnectedClient<T> {
-    framed_stream: Framed<T, MqttCodec>,
+type PacketResult = Result<Packet, DecodeError>;
+
+pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>>
+{
+    packet_stream: ST,
+    packet_sink: SI,
     broker_tx: Sender<BrokerMessage>,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
-    pub fn new(framed_stream: Framed<T, MqttCodec>, broker_tx: Sender<BrokerMessage>) -> Self {
-        Self { framed_stream, broker_tx }
+impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeError>>
+    UnconnectedClient<ST, SI>
+{
+    pub fn new(packet_stream: ST, packet_sink: SI, broker_tx: Sender<BrokerMessage>) -> Self {
+        Self { packet_stream, packet_sink, broker_tx }
     }
 
-    pub async fn handshake(mut self) -> Result<Client<T>, ProtocolError> {
-        let first_packet = time::timeout(Duration::from_secs(2), self.framed_stream.next())
+    pub async fn handshake(mut self) -> Result<Client<ST, SI>, ProtocolError> {
+        let first_packet = time::timeout(Duration::from_secs(2), self.packet_stream.next())
             .await
             .map_err(|_| ProtocolError::ConnectTimedOut)?;
 
@@ -54,7 +52,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> UnconnectedClient<T> {
                 Ok(Client::new(
                     client_id,
                     protocol_version,
-                    self.framed_stream,
+                    self.packet_stream,
+                    self.packet_sink,
                     self.broker_tx,
                     receiver,
                     self_tx,
@@ -76,29 +75,41 @@ pub enum ClientMessage {
     Disconnect,
 }
 
-pub struct Client<T: AsyncRead + AsyncWrite + Unpin> {
+pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>> {
     id: String,
-    protocol_version: ProtocolVersion,
-    framed_stream: Framed<T, MqttCodec>,
+    _protocol_version: ProtocolVersion,
+    packet_stream: ST,
+    packet_sink: SI,
     broker_tx: Sender<BrokerMessage>,
     broker_rx: Receiver<ClientMessage>,
     self_tx: Sender<ClientMessage>,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
+impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeError>>
+    Client<ST, SI>
+{
     pub fn new(
         id: String,
         protocol_version: ProtocolVersion,
-        framed_stream: Framed<T, MqttCodec>,
+        packet_stream: ST,
+        packet_sink: SI,
         broker_tx: Sender<BrokerMessage>,
         broker_rx: Receiver<ClientMessage>,
         self_tx: Sender<ClientMessage>,
     ) -> Self {
-        Self { id, protocol_version, framed_stream, broker_tx, broker_rx, self_tx }
+        Self {
+            id,
+            _protocol_version: protocol_version,
+            packet_stream,
+            packet_sink,
+            broker_tx,
+            broker_rx,
+            self_tx,
+        }
     }
 
     async fn handle_socket_reads(
-        mut stream: SplitStream<Framed<T, MqttCodec>>,
+        mut stream: ST,
         client_id: String,
         mut broker_tx: Sender<BrokerMessage>,
         mut self_tx: Sender<ClientMessage>,
@@ -139,10 +150,9 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
             .expect("Couldn't send Disconnect message to broker");
     }
 
-    async fn handle_socket_writes(
-        mut sink: SplitSink<Framed<T, MqttCodec>, Packet>,
-        mut broker_rx: Receiver<ClientMessage>,
-    ) {
+    async fn handle_socket_writes(sink: SI, mut broker_rx: Receiver<ClientMessage>) {
+        tokio::pin!(sink);
+
         while let Some(frame) = broker_rx.recv().await {
             match frame {
                 ClientMessage::Packet(packet) => {
@@ -154,10 +164,9 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Client<T> {
     }
 
     pub async fn run(self) {
-        let (sink, stream) = self.framed_stream.split();
-
-        let task_rx = Self::handle_socket_reads(stream, self.id, self.broker_tx, self.self_tx);
-        let task_tx = Self::handle_socket_writes(sink, self.broker_rx);
+        let task_rx =
+            Self::handle_socket_reads(self.packet_stream, self.id, self.broker_tx, self.self_tx);
+        let task_tx = Self::handle_socket_writes(self.packet_sink, self.broker_rx);
 
         tokio::select! {
             _ = task_rx => println!("rx"),

@@ -29,6 +29,19 @@ pub enum DecodeError {
     InvalidTopic(TopicParseError),
     InvalidTopicFilter(TopicParseError),
     Io(std::io::Error),
+    BadTransport, // When errors occur on a lower level transport like WS
+}
+
+#[derive(Debug)]
+pub enum EncodeError {
+    BadTransport,
+    Io(std::io::Error),
+}
+
+impl From<websocket_codec::Error> for EncodeError {
+    fn from(_err: websocket_codec::Error) -> EncodeError {
+        EncodeError::BadTransport
+    }
 }
 
 #[derive(Debug)]
@@ -76,6 +89,12 @@ impl VariableByteInt {
 impl From<std::io::Error> for DecodeError {
     fn from(err: std::io::Error) -> Self {
         DecodeError::Io(err)
+    }
+}
+
+impl From<std::io::Error> for EncodeError {
+    fn from(err: std::io::Error) -> Self {
+        EncodeError::Io(err)
     }
 }
 
@@ -886,6 +905,7 @@ pub struct PublishPacket {
     pub content_type: Option<ContentType>,
 
     // Payload
+    // TODO(bschwind) - Use Bytes instead for less copying
     pub payload: Vec<u8>,
 }
 

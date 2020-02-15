@@ -118,7 +118,7 @@ impl Broker {
                 reason_codes: packet
                     .subscription_topics
                     .iter()
-                    .map(|_| SubscribeAckReason::GrantedQoSOne)
+                    .map(|_| SubscribeAckReason::GrantedQoSZero)
                     .collect(),
             };
 
@@ -138,19 +138,14 @@ impl Broker {
     }
 
     fn handle_publish(&mut self, _client_id: String, packet: PublishPacket) {
-        // TODO - Ideall we shouldn't allocate here
-        let mut clients = vec![];
+        let sessions = &mut self.sessions;
         self.subscriptions.matching_subscribers(&packet.topic, |client_id| {
-            clients.push(client_id.clone());
-        });
-
-        for client_id in clients {
-            if let Some(session) = self.sessions.get_mut(&client_id) {
+            if let Some(session) = sessions.get_mut(client_id) {
                 let _ = session
                     .client_sender
                     .try_send(ClientMessage::Packet(Packet::Publish(packet.clone())));
             }
-        }
+        });
     }
 
     pub async fn run(mut self) {
