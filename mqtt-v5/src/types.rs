@@ -1147,6 +1147,7 @@ impl PropertySize for AuthenticatePacket {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq)]
 pub enum Packet {
     Connect(ConnectPacket),

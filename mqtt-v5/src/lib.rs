@@ -127,13 +127,10 @@ pub mod websocket {
             match (method, uri, version) {
                 (Some(method), Some(_uri), Some(version)) => {
                     let is_get = method.eq_ignore_ascii_case("get");
-                    let http_version = version
-                        .split("/")
-                        .skip(1)
-                        .next()
-                        .ok_or(WsDecodeError::InvalidHttpVersion)?;
+                    let http_version =
+                        version.split('/').nth(1).ok_or(WsDecodeError::InvalidHttpVersion)?;
 
-                    let mut versions = http_version.split(".");
+                    let mut versions = http_version.split('.');
                     let major_str = versions.next().ok_or(WsDecodeError::InvalidHttpVersion)?;
                     let minor_str = versions.next().ok_or(WsDecodeError::InvalidHttpVersion)?;
 
@@ -151,7 +148,7 @@ pub mod websocket {
                 _ => return Err(WsDecodeError::InvalidUpgradeRequest),
             }
 
-            return Ok(());
+            Ok(())
         }
 
         fn validate_headers<'a>(
@@ -162,7 +159,7 @@ pub mod websocket {
             let mut header_lines = header_lines.peekable();
 
             while let Some(header_line) = header_lines.next() {
-                let mut split_line = header_line.split(":");
+                let mut split_line = header_line.split(':');
                 let header_name =
                     split_line.next().ok_or(WsDecodeError::InvalidUpgradeHeaders)?.trim();
                 let header_val =
@@ -188,7 +185,7 @@ pub mod websocket {
                         }
                     },
                     header if header.eq_ignore_ascii_case("Sec-WebSocket-Protocol") => {
-                        let mut versions = header_val.split(",");
+                        let mut versions = header_val.split(',');
 
                         if !versions.any(|proto| proto == "mqtt") {
                             return Err(WsDecodeError::InvalidUpgradeHeaders);
@@ -206,6 +203,12 @@ pub mod websocket {
         }
     }
 
+    impl Default for WsUpgraderCodec {
+        fn default() -> Self {
+            WsUpgraderCodec {}
+        }
+    }
+
     impl Decoder for WsUpgraderCodec {
         type Error = WsDecodeError;
         type Item = String;
@@ -216,7 +219,7 @@ pub mod websocket {
                     let mut lines = s.split("\r\n");
 
                     if let Some(request_line) = lines.next() {
-                        let _ = Self::validate_request_line(request_line)?;
+                        Self::validate_request_line(request_line)?;
 
                         let websocket_key = Self::validate_headers(lines)?;
 
@@ -228,9 +231,9 @@ pub mod websocket {
 
                         let _rest = buf.split_to(s.len());
 
-                        return Ok(Some(sha1_str));
+                        Ok(Some(sha1_str))
                     } else {
-                        return Ok(None);
+                        Ok(None)
                     }
                 },
                 Err(_e) => Err(WsDecodeError::InvalidString),
