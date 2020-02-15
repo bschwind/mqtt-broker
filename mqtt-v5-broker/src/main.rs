@@ -113,6 +113,10 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
                             return None;
                         }
 
+                        if message.opcode() == Opcode::Ping {
+                            println!("Got a websocket ping");
+                        }
+
                         if message.opcode() != Opcode::Binary {
                             // MQTT Control Packets MUST be sent in WebSocket binary data frames
                             return Some((
@@ -141,7 +145,7 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
         },
     );
 
-    futures::pin_mut!(stream);
+    tokio::pin!(stream);
     let unconnected_client = UnconnectedClient::new(stream, sink, broker_tx);
 
     let connected_client = match unconnected_client.handshake().await {

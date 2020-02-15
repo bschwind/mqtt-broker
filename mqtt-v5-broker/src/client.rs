@@ -151,7 +151,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
     }
 
     async fn handle_socket_writes(sink: SI, mut broker_rx: Receiver<ClientMessage>) {
-        futures::pin_mut!(sink);
+        tokio::pin!(sink);
 
         while let Some(frame) = broker_rx.recv().await {
             match frame {
