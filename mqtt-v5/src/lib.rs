@@ -151,7 +151,7 @@ pub mod websocket {
                 _ => return Err(WsDecodeError::InvalidUpgradeRequest),
             }
 
-            return Ok(());
+            Ok(())
         }
 
         fn validate_headers<'a>(
@@ -228,9 +228,9 @@ pub mod websocket {
 
                         let _rest = buf.split_to(s.len());
 
-                        return Ok(Some(sha1_str));
+                        Ok(Some(sha1_str))
                     } else {
-                        return Ok(None);
+                        Ok(None)
                     }
                 },
                 Err(_e) => Err(WsDecodeError::InvalidString),
