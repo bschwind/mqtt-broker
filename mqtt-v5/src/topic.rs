@@ -198,9 +198,11 @@ impl FromStr for Topic {
         }
 
         // Topics cannot contain wildcards or null characters
-        if topic.contains(|x: char| {
+        let topic_contains_wildcards = topic.contains(|x: char| {
             x == SINGLE_LEVEL_WILDCARD || x == MULTI_LEVEL_WILDCARD || x == '\0'
-        }) {
+        });
+
+        if topic_contains_wildcards {
             return Err(TopicParseError::WildcardOrNullInTopic);
         }
 

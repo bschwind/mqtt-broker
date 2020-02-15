@@ -38,6 +38,7 @@ impl<T: std::fmt::Debug> SubscriptionTree<T> {
         self.root.remove(topic_filter, counter)
     }
 
+    #[allow(dead_code)]
     fn is_empty(&self) -> bool {
         self.root.is_empty()
     }

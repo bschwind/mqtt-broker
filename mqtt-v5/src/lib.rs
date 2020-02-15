@@ -28,6 +28,12 @@ pub mod codec {
         version: ProtocolVersion,
     }
 
+    impl Default for MqttCodec {
+        fn default() -> Self {
+            MqttCodec::new()
+        }
+    }
+
     impl MqttCodec {
         pub fn new() -> Self {
             MqttCodec { version: ProtocolVersion::V311 }
