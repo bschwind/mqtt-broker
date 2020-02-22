@@ -250,8 +250,19 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
 #[cfg(test)]
 mod tests {
     use crate::tree::SubscriptionTree;
+    use std::{collections::HashSet, iter::FromIterator};
 
-    // TODO(bschwind) - Turn this into a test that properly asserts the subscriber values.
+    fn assert_subscribers(tree: &SubscriptionTree<u32>, topic: &str, numbers: &[u32]) {
+        let expected_set = HashSet::from_iter(numbers.iter().cloned());
+        let mut actual_set = HashSet::new();
+
+        tree.matching_subscribers(&topic.parse().unwrap(), |s| {
+            actual_set.insert(*s);
+        });
+
+        assert_eq!(expected_set, actual_set);
+    }
+
     #[test]
     fn test_insert() {
         let mut sub_tree = SubscriptionTree::new();
@@ -269,64 +280,18 @@ mod tests {
         sub_tree.insert(&"sport/tennis/+".parse().unwrap(), 21);
         sub_tree.insert(&"#".parse().unwrap(), 12);
 
-        println!("{:#?}", sub_tree);
-
-        // 6, 12
-        sub_tree.matching_subscribers(&"home".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 3, 5, 6, 12
-        sub_tree.matching_subscribers(&"home/kitchen".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 2, 4, 6, 12
-        sub_tree.matching_subscribers(&"home/kitchen/humidity".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 8, 9, 12
-        sub_tree.matching_subscribers(&"office/stairwell/temperature".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 10, 11, 12
-        sub_tree.matching_subscribers(
-            &"office/tokyo/shibuya/some_desk/cpu_1/fan_speed/blade_4/temperature".parse().unwrap(),
-            |s| {
-                println!("{}", s);
-            },
+        assert_subscribers(&sub_tree, "home", &[6, 12]);
+        assert_subscribers(&sub_tree, "home/kitchen", &[3, 5, 6, 12]);
+        assert_subscribers(&sub_tree, "home/kitchen/humidity", &[2, 4, 6, 12]);
+        assert_subscribers(&sub_tree, "office/stairwell/temperature", &[8, 9, 12]);
+        assert_subscribers(
+            &sub_tree,
+            "office/tokyo/shibuya/some_desk/cpu_1/fan_speed/blade_4/temperature",
+            &[10, 11, 12],
         );
-
-        println!();
-
-        // 21, 12
-        sub_tree.matching_subscribers(&"sport/tennis/player1".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 21, 12
-        sub_tree.matching_subscribers(&"sport/tennis/player2".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
-
-        println!();
-
-        // 12
-        sub_tree.matching_subscribers(&"sport/tennis/player1/ranking".parse().unwrap(), |s| {
-            println!("{}", s);
-        });
+        assert_subscribers(&sub_tree, "sport/tennis/player1", &[21, 12]);
+        assert_subscribers(&sub_tree, "sport/tennis/player2", &[21, 12]);
+        assert_subscribers(&sub_tree, "sport/tennis/player1/ranking", &[12]);
     }
 
     #[test]
