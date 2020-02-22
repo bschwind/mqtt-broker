@@ -1,6 +1,7 @@
 use crate::broker::BrokerMessage;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use mqtt_v5::types::{DecodeError, EncodeError, Packet, ProtocolError, ProtocolVersion};
+use nanoid::nanoid;
 use std::{marker::Unpin, time::Duration};
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
@@ -34,9 +35,10 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
             Some(Ok(Packet::Connect(connect_packet))) => {
                 let (sender, receiver) = mpsc::channel(5);
 
-                // TODO - Use a UUID or some other random unique ID
                 let client_id = if connect_packet.client_id.is_empty() {
-                    "EMPTY_CLIENT_ID".to_string()
+                    // If the Client connects using a zero length Client Identifier,
+                    // the Server MUST respond with a CONNACK containing an Assigned Client Identifier.
+                    nanoid!()
                 } else {
                     connect_packet.client_id
                 };
