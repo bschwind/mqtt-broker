@@ -313,8 +313,6 @@ fn encode_connect_ack(
         packet.server_reference.encode(bytes);
         packet.authentication_method.encode(bytes);
         packet.authentication_data.encode(bytes);
-    } else {
-        encode_variable_int(0, bytes);
     }
 }
 
