@@ -346,9 +346,10 @@ fn encode_publish_ack(
     protocol_version: ProtocolVersion,
 ) {
     bytes.put_u16(packet.packet_id);
-    bytes.put_u8(packet.reason_code as u8);
 
     if protocol_version == ProtocolVersion::V500 {
+        bytes.put_u8(packet.reason_code as u8);
+
         let property_length = packet.property_size(protocol_version);
         encode_variable_int(property_length, bytes);
 

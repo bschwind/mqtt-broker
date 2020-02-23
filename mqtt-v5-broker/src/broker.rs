@@ -3,7 +3,8 @@ use mqtt_v5::{
     topic::TopicFilter,
     types::{
         properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, Packet,
-        ProtocolVersion, PublishPacket, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
+        ProtocolVersion, PublishAckPacket, PublishAckReason, PublishPacket, QoS,
+        SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
     },
 };
 use std::collections::HashMap;
@@ -75,6 +76,10 @@ impl Broker {
                 self.subscriptions.remove(&topic, token);
             }
 
+            // TODO(bschwind) - Publish the client's will and send a Disconnect
+            //                  packet with Reason Code 0x8E (Session taken over).
+            //                  Also remove all session subscriptions like handle_disconnect().
+
             let _ = session.client_sender.try_send(ClientMessage::Disconnect);
         }
 
@@ -143,7 +148,7 @@ impl Broker {
         }
     }
 
-    fn handle_publish(&mut self, _client_id: String, packet: PublishPacket) {
+    fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
         let sessions = &mut self.sessions;
         self.subscriptions.matching_subscribers(&packet.topic, |client_id| {
             if let Some(session) = sessions.get_mut(client_id) {
@@ -152,6 +157,25 @@ impl Broker {
                     .try_send(ClientMessage::Packet(Packet::Publish(packet.clone())));
             }
         });
+
+        match packet.qos {
+            QoS::AtMostOnce => {},
+            QoS::AtLeastOnce => {
+                if let Some(session) = self.sessions.get_mut(&client_id) {
+                    let publish_ack = PublishAckPacket {
+                        packet_id: packet.packet_id.unwrap(),
+                        reason_code: PublishAckReason::Success,
+                        reason_string: None,
+                        user_properties: vec![],
+                    };
+
+                    let _ = session
+                        .client_sender
+                        .try_send(ClientMessage::Packet(Packet::PublishAck(publish_ack)));
+                }
+            },
+            QoS::ExactlyOnce => {},
+        }
     }
 
     pub async fn run(mut self) {
