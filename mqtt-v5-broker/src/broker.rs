@@ -69,6 +69,12 @@ impl Broker {
             // Tell session to disconnect
             session_present = true;
             println!("Telling existing session to disconnect");
+
+            // TODO(bschwind) - Unify this logic with handle_disconnect()
+            for (topic, token) in session.subscription_tokens {
+                self.subscriptions.remove(&topic, token);
+            }
+
             let _ = session.client_sender.try_send(ClientMessage::Disconnect);
         }
 
