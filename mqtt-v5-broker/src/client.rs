@@ -1,6 +1,6 @@
 use crate::broker::BrokerMessage;
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use mqtt_v5::types::{DecodeError, EncodeError, Packet, ProtocolError, ProtocolVersion};
+use mqtt_v5::types::{DecodeError, EncodeError, Packet, ProtocolError, ProtocolVersion, QoS};
 use nanoid::nanoid;
 use std::{marker::Unpin, time::Duration};
 use tokio::{
@@ -127,8 +127,25 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                             .expect("Couldn't send Subscribe message to broker");
                     },
                     Packet::Publish(packet) => {
+                        match packet.qos {
+                            QoS::AtMostOnce => {},
+                            QoS::AtLeastOnce => {
+                                assert!(
+                                    packet.packet_id.is_some(),
+                                    "Packets with QoS 1&2 need packet identifiers"
+                                );
+                            },
+                            QoS::ExactlyOnce => {},
+                        }
+
                         broker_tx
                             .send(BrokerMessage::Publish(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send Publish message to broker");
+                    },
+                    Packet::PublishAck(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishAck(client_id.clone(), packet))
                             .await
                             .expect("Couldn't send Publish message to broker");
                     },

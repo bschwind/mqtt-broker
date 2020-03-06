@@ -1280,12 +1280,14 @@ impl PacketSize for Packet {
             },
             Packet::PublishAck(p) => {
                 // packet_id + reason_code
-                let mut size = 2 + 1;
+                let mut size = 2;
 
                 if protocol_version == ProtocolVersion::V500 {
                     let property_size = p.property_size(protocol_version);
-                    size +=
-                        property_size + VariableByteInt(property_size).calc_size(protocol_version);
+                    // 1 for the reason code
+                    size += 1
+                        + property_size
+                        + VariableByteInt(property_size).calc_size(protocol_version);
                 }
 
                 size
