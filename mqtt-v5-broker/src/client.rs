@@ -143,6 +143,12 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                             .await
                             .expect("Couldn't send Publish message to broker");
                     },
+                    Packet::PublishAck(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishAck(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send Publish message to broker");
+                    },
                     Packet::PingRequest => {
                         self_tx
                             .send(ClientMessage::Packet(Packet::PingResponse))
