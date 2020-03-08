@@ -660,7 +660,7 @@ mod tests {
             subscription_identifier: None,
             content_type: None,
 
-            payload: vec![22; 100],
+            payload: vec![22; 100].into(),
         });
 
         let mut bytes = BytesMut::new();
