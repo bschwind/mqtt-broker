@@ -42,6 +42,7 @@ impl Session {
         // TODO(bschwind) - Prevent using packet IDs which already exist in `outgoing_packets`
         let packet_id = self.packet_counter;
         publish.packet_id = Some(self.packet_counter);
+        publish.is_duplicate = false;
         self.packet_counter += 1;
 
         // Handle u16 wraparound, 0 is an invalid packet ID
@@ -212,8 +213,11 @@ impl Broker {
                     _ => None,
                 };
 
-                let outgoing_packet =
-                    PublishPacket { packet_id: outgoing_packet_id, ..packet.clone() };
+                let outgoing_packet = PublishPacket {
+                    packet_id: outgoing_packet_id,
+                    is_duplicate: false,
+                    ..packet.clone()
+                };
 
                 let _ = session
                     .client_sender
