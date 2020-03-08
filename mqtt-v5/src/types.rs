@@ -2,7 +2,7 @@ use crate::{
     topic::{Topic, TopicFilter, TopicParseError},
     SHARED_SUBSCRIPTION_PREFIX,
 };
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
 
@@ -162,7 +162,7 @@ impl PacketSize for &[u8] {
     }
 }
 
-impl PacketSize for Vec<u8> {
+impl PacketSize for Bytes {
     fn calc_size(&self, _protocol_version: ProtocolVersion) -> u32 {
         2 + self.len() as u32
     }
@@ -260,6 +260,7 @@ pub enum RetainHandling {
 pub mod properties {
     use super::{PacketSize, QoS, VariableByteInt};
     use crate::types::ProtocolVersion;
+    use bytes::Bytes;
     use num_enum::TryFromPrimitive;
 
     // TODO - Technically property IDs are encoded as a variable
@@ -299,7 +300,7 @@ pub mod properties {
     }
 
     #[derive(Debug, Clone, PartialEq)]
-    pub struct CorrelationData(pub Vec<u8>);
+    pub struct CorrelationData(pub Bytes);
     impl PacketSize for CorrelationData {
         fn calc_size(&self, protocol_version: ProtocolVersion) -> u32 {
             1 + self.0.calc_size(protocol_version)
@@ -347,7 +348,7 @@ pub mod properties {
     }
 
     #[derive(Debug, Clone, PartialEq)]
-    pub struct AuthenticationData(pub Vec<u8>);
+    pub struct AuthenticationData(pub Bytes);
     impl PacketSize for AuthenticationData {
         fn calc_size(&self, protocol_version: ProtocolVersion) -> u32 {
             1 + self.0.calc_size(protocol_version)
@@ -730,7 +731,7 @@ pub enum AuthenticateReason {
 #[derive(Debug, PartialEq)]
 pub struct FinalWill {
     pub topic: String,
-    pub payload: Vec<u8>,
+    pub payload: Bytes,
     pub qos: QoS,
     pub should_retain: bool,
 
@@ -905,8 +906,7 @@ pub struct PublishPacket {
     pub content_type: Option<ContentType>,
 
     // Payload
-    // TODO(bschwind) - Use Bytes instead for less copying
-    pub payload: Vec<u8>,
+    pub payload: Bytes,
 }
 
 impl PropertySize for PublishPacket {

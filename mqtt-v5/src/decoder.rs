@@ -7,7 +7,7 @@ use crate::types::{
     SubscribeAckReason, SubscribePacket, SubscriptionTopic, UnsubscribeAckPacket,
     UnsubscribeAckReason, UnsubscribePacket, VariableByteInt,
 };
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use std::{convert::TryFrom, io::Cursor};
 
 macro_rules! return_if_none {
@@ -132,13 +132,15 @@ fn decode_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, De
     }
 }
 
-fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8>>, DecodeError> {
+fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Bytes>, DecodeError> {
     let data_size_bytes = read_u16!(bytes) as usize;
     require_length!(bytes, data_size_bytes);
 
     let position = bytes.position() as usize;
 
-    let result = Ok(Some(bytes.get_ref()[position..(position + data_size_bytes)].into()));
+    let payload_bytes =
+        BytesMut::from(&bytes.get_ref()[position..(position + data_size_bytes)]).freeze();
+    let result = Ok(Some(payload_bytes));
     bytes.advance(data_size_bytes);
 
     result
@@ -147,11 +149,12 @@ fn decode_binary_data(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Vec<u8
 fn decode_binary_data_with_size(
     bytes: &mut Cursor<&mut BytesMut>,
     size: usize,
-) -> Result<Option<Vec<u8>>, DecodeError> {
+) -> Result<Option<Bytes>, DecodeError> {
     require_length!(bytes, size);
 
     let position = bytes.position() as usize;
-    let result = Ok(Some(bytes.get_ref()[position..(position + size)].into()));
+    let payload_bytes = BytesMut::from(&bytes.get_ref()[position..(position + size)]).freeze();
+    let result = Ok(Some(payload_bytes));
     bytes.advance(size);
 
     result
