@@ -16,7 +16,6 @@ websocket = ["codec", "websocket-codec", "sha1", "base64"]
 [dependencies]
 bytes = "0.5.0"
 num_enum = "0.4"
-
 tokio-util = { optional = true, version = "0.3", features = ["codec"] }
 websocket-codec = { optional = true, version = "0.3" }
 sha1 = { optional = true, version = "0.6.0" }
