@@ -66,11 +66,10 @@ pub mod codec {
         }
     }
 
-    impl Encoder for MqttCodec {
+    impl Encoder<Packet> for MqttCodec {
         type Error = EncodeError;
-        type Item = Packet;
 
-        fn encode(&mut self, packet: Self::Item, bytes: &mut BytesMut) -> Result<(), Self::Error> {
+        fn encode(&mut self, packet: Packet, bytes: &mut BytesMut) -> Result<(), Self::Error> {
             self.encode(packet, bytes)
         }
     }
@@ -241,13 +240,12 @@ pub mod websocket {
         }
     }
 
-    impl Encoder for WsUpgraderCodec {
+    impl Encoder<String> for WsUpgraderCodec {
         type Error = WsEncodeError;
-        type Item = String;
 
         fn encode(
             &mut self,
-            websocket_key: Self::Item,
+            websocket_key: String,
             bytes: &mut BytesMut,
         ) -> Result<(), Self::Error> {
             let response = format!(

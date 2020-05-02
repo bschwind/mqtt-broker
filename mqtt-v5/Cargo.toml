@@ -17,9 +17,7 @@ websocket = ["codec", "websocket-codec", "sha1", "base64"]
 bytes = "0.5.0"
 num_enum = "0.4"
 
-tokio-util = { optional = true, version = "0.2", features = ["codec"] }
-# TODO(bschwind) - Replace when this issue is resolved:
-#                  https://github.com/1tgr/rust-websocket-lite/issues/19
-websocket-codec = { optional = true, version = "0.2.2", git = "https://github.com/bschwind/rust-websocket-lite" }
+tokio-util = { optional = true, version = "0.3", features = ["codec"] }
+websocket-codec = { optional = true, version = "0.3" }
 sha1 = { optional = true, version = "0.6.0" }
 base64 = { optional = true, version = "0.11.0" }
