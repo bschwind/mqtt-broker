@@ -1164,10 +1164,8 @@ mod tests {
         let _ = decode_mqtt(&mut bytes, ProtocolVersion::V500);
     }
 
-    
     #[test]
     fn test_decode_variable_int() {
-
         // TODO - Maybe it would be better to add an abnormal system test.
 
         fn normal_test(encoded_variable_int: &[u8], expected_variable_int: u32) {
@@ -1176,7 +1174,7 @@ mod tests {
             match decode_variable_int(&mut Cursor::new(bytes)) {
                 Ok(val) => match val {
                     Some(get_variable_int) => assert_eq!(get_variable_int, expected_variable_int),
-                    None => panic!("variable_int is None")
+                    None => panic!("variable_int is None"),
                 },
                 Err(err) => panic!(err),
             }
