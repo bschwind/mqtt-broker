@@ -101,11 +101,12 @@ fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>,
         let encoded_byte = read_u8!(bytes);
 
         value += ((encoded_byte & 0b0111_1111) as u32) * multiplier;
-        multiplier *= 128;
 
         if multiplier > (128 * 128 * 128) {
             return Err(DecodeError::InvalidRemainingLength);
         }
+
+        multiplier *= 128;
 
         if encoded_byte & 0b1000_0000 == 0b0000_0000 {
             break;
