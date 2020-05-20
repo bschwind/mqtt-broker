@@ -101,11 +101,12 @@ fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>,
         let encoded_byte = read_u8!(bytes);
 
         value += ((encoded_byte & 0b0111_1111) as u32) * multiplier;
-        multiplier *= 128;
 
         if multiplier > (128 * 128 * 128) {
             return Err(DecodeError::InvalidRemainingLength);
         }
+
+        multiplier *= 128;
 
         if encoded_byte & 0b1000_0000 == 0b0000_0000 {
             break;
@@ -1161,5 +1162,38 @@ mod tests {
         bytes.extend_from_slice(&[136, 1, 0, 36, 0, 0]); // Discovered from fuzz test
 
         let _ = decode_mqtt(&mut bytes, ProtocolVersion::V500);
+    }
+
+    #[test]
+    fn test_decode_variable_int() {
+        // TODO - Maybe it would be better to add an abnormal system test.
+
+        fn normal_test(encoded_variable_int: &[u8], expected_variable_int: u32) {
+            let bytes = &mut BytesMut::new();
+            bytes.extend_from_slice(encoded_variable_int);
+            match decode_variable_int(&mut Cursor::new(bytes)) {
+                Ok(val) => match val {
+                    Some(get_variable_int) => assert_eq!(get_variable_int, expected_variable_int),
+                    None => panic!("variable_int is None"),
+                },
+                Err(err) => panic!(err),
+            }
+        }
+
+        // Digits 1
+        normal_test(&[0x00], 0);
+        normal_test(&[0x7F], 127);
+
+        // Digits 2
+        normal_test(&[0x80, 0x01], 128);
+        normal_test(&[0xFF, 0x7F], 16383);
+
+        // Digits 3
+        normal_test(&[0x80, 0x80, 0x01], 16384);
+        normal_test(&[0xFF, 0xFF, 0x7F], 2097151);
+
+        // Digits 4
+        normal_test(&[0x80, 0x80, 0x80, 0x01], 2097152);
+        normal_test(&[0xFF, 0xFF, 0xFF, 0x7F], 268435455);
     }
 }
