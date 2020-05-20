@@ -4,7 +4,7 @@ description = "Rust types, encode/decode functions, and a tokio codec for MQTT V
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/bschwind/mqtt-broker"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"
 
