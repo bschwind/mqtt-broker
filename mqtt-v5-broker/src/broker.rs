@@ -2,8 +2,8 @@ use crate::{client::ClientMessage, tree::SubscriptionTree};
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
-        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectReason, Packet,
-        ProtocolVersion, PublishAckPacket, PublishAckReason, PublishPacket, QoS,
+        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectPacket, ConnectReason,
+        Packet, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishPacket, QoS,
         SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
     },
 };
@@ -39,6 +39,8 @@ impl Session {
     }
 
     pub fn store_outgoing_publish(&mut self, mut publish: PublishPacket) -> u16 {
+        assert!(publish.qos == QoS::AtLeastOnce || publish.qos == QoS::ExactlyOnce);
+
         // TODO(bschwind) - Prevent using packet IDs which already exist in `outgoing_packets`
         let packet_id = self.packet_counter;
         publish.packet_id = Some(self.packet_counter);
@@ -71,7 +73,7 @@ struct SessionSubscription {
 
 #[derive(Debug)]
 pub enum BrokerMessage {
-    NewClient(String, ProtocolVersion, Sender<ClientMessage>),
+    NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
     Publish(String, PublishPacket),
     PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
     Subscribe(String, SubscribePacket),   // TODO - replace string client_id with int
@@ -98,13 +100,13 @@ impl Broker {
 
     fn handle_new_client(
         &mut self,
-        client_id: String,
-        protocol_version: ProtocolVersion,
+        connect_packet: ConnectPacket,
         mut client_msg_sender: Sender<ClientMessage>,
     ) {
         let mut session_present = false;
+        let mut outgoing_packets = None;
 
-        if let Some(mut session) = self.sessions.remove(&client_id) {
+        if let Some(mut session) = self.sessions.remove(&connect_packet.client_id) {
             // Tell session to disconnect
             session_present = true;
             println!("Telling existing session to disconnect");
@@ -119,9 +121,16 @@ impl Broker {
             //                  Also remove all session subscriptions like handle_disconnect().
 
             let _ = session.client_sender.try_send(ClientMessage::Disconnect);
+
+            if !connect_packet.clean_start && session_present {
+                outgoing_packets = Some(session.outgoing_packets);
+            }
         }
 
-        println!("Client ID {} connected (Version: {:?})", client_id, protocol_version);
+        println!(
+            "Client ID {} connected (Version: {:?})",
+            connect_packet.client_id, connect_packet.protocol_version
+        );
 
         let connect_ack = ConnectAckPacket {
             // Variable header
@@ -134,7 +143,9 @@ impl Broker {
             maximum_qos: None,
             retain_available: None,
             maximum_packet_size: None,
-            assigned_client_identifier: Some(AssignedClientIdentifier(client_id.clone())),
+            assigned_client_identifier: Some(AssignedClientIdentifier(
+                connect_packet.client_id.clone(),
+            )),
             topic_alias_maximum: None,
             reason_string: None,
             user_properties: vec![],
@@ -150,7 +161,19 @@ impl Broker {
 
         let _ = client_msg_sender.try_send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)));
 
-        self.sessions.insert(client_id, Session::new(protocol_version, client_msg_sender));
+        if let Some(outgoing_packets) = outgoing_packets {
+            // TODO(bschwind) - Support sending a Vec of packets instead of sending
+            //                  these individually so we don't overwhelm the channel.
+            for outgoing_packet in outgoing_packets {
+                let _ = client_msg_sender
+                    .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
+            }
+        }
+
+        self.sessions.insert(
+            connect_packet.client_id,
+            Session::new(connect_packet.protocol_version, client_msg_sender),
+        );
     }
 
     fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
@@ -256,8 +279,8 @@ impl Broker {
     pub async fn run(mut self) {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
-                BrokerMessage::NewClient(client_id, protocol_version, client_msg_sender) => {
-                    self.handle_new_client(client_id, protocol_version, client_msg_sender);
+                BrokerMessage::NewClient(connect_packet, client_msg_sender) => {
+                    self.handle_new_client(*connect_packet, client_msg_sender);
                 },
                 BrokerMessage::Subscribe(client_id, packet) => {
                     self.handle_subscribe(client_id, packet);
@@ -290,8 +313,31 @@ mod tests {
 
     async fn run_client(mut broker_tx: Sender<BrokerMessage>) {
         let (sender, mut receiver) = mpsc::channel(5);
+
+        let connect_packet = ConnectPacket {
+            protocol_name: "mqtt".to_string(),
+            protocol_version: ProtocolVersion::V500,
+            clean_start: true,
+            keep_alive: 1000,
+
+            session_expiry_interval: None,
+            receive_maximum: None,
+            maximum_packet_size: None,
+            topic_alias_maximum: None,
+            request_response_information: None,
+            request_problem_information: None,
+            user_properties: vec![],
+            authentication_method: None,
+            authentication_data: None,
+
+            client_id: "TEST".to_string(),
+            will: None,
+            user_name: None,
+            password: None,
+        };
+
         let _ = broker_tx
-            .send(BrokerMessage::NewClient("TEST".to_string(), ProtocolVersion::V500, sender))
+            .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
             .await
             .unwrap();
 

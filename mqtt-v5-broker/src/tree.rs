@@ -44,9 +44,6 @@ impl<T: std::fmt::Debug> SubscriptionTree<T> {
     }
 }
 
-// TODO(bschwind) - All these topic strings need validation before
-//                  operating on them.
-
 impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
     fn new() -> Self {
         Self {

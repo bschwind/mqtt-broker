@@ -32,22 +32,20 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         println!("got a packet: {:?}", first_packet);
 
         match first_packet {
-            Some(Ok(Packet::Connect(connect_packet))) => {
+            Some(Ok(Packet::Connect(mut connect_packet))) => {
                 let (sender, receiver) = mpsc::channel(5);
 
-                let client_id = if connect_packet.client_id.is_empty() {
-                    // If the Client connects using a zero length Client Identifier,
-                    // the Server MUST respond with a CONNACK containing an Assigned Client Identifier.
-                    nanoid!()
-                } else {
-                    connect_packet.client_id
-                };
+                if connect_packet.client_id.is_empty() {
+                    connect_packet.client_id = nanoid!();
+                }
+
+                let client_id = connect_packet.client_id.clone();
 
                 let protocol_version = connect_packet.protocol_version;
                 let self_tx = sender.clone();
 
                 self.broker_tx
-                    .send(BrokerMessage::NewClient(client_id.clone(), protocol_version, sender))
+                    .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
                     .await
                     .expect("Couldn't send NewClient message to broker");
 
