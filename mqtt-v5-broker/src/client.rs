@@ -127,13 +127,12 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                     Packet::Publish(packet) => {
                         match packet.qos {
                             QoS::AtMostOnce => {},
-                            QoS::AtLeastOnce => {
+                            QoS::AtLeastOnce | QoS::ExactlyOnce => {
                                 assert!(
                                     packet.packet_id.is_some(),
                                     "Packets with QoS 1&2 need packet identifiers"
                                 );
                             },
-                            QoS::ExactlyOnce => {},
                         }
 
                         broker_tx
@@ -145,7 +144,13 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         broker_tx
                             .send(BrokerMessage::PublishAck(client_id.clone(), packet))
                             .await
-                            .expect("Couldn't send Publish message to broker");
+                            .expect("Couldn't send PublishAck message to broker");
+                    },
+                    Packet::PublishRelease(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishRelease(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send PublishRelease message to broker");
                     },
                     Packet::PingRequest => {
                         self_tx

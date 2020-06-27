@@ -3,8 +3,9 @@ use mqtt_v5::{
     topic::TopicFilter,
     types::{
         properties::AssignedClientIdentifier, ConnectAckPacket, ConnectPacket, ConnectReason,
-        Packet, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishPacket, QoS,
-        SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
+        Packet, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
+        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
+        PublishReleasePacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
     },
 };
 use std::collections::HashMap;
@@ -22,6 +23,10 @@ pub struct Session {
     // Keep track of outgoing packets with QoS 1 or 2
     outgoing_packets: Vec<PublishPacket>,
 
+    // Keep track of outgoing PublishReceived packets.
+    // TODO(bschwind) - Consider a HashSet if order isn't important.
+    outgoing_publish_receives: Vec<u16>,
+
     packet_counter: u16,
 }
 
@@ -34,16 +39,22 @@ impl Session {
             client_sender,
             subscription_tokens: Vec::new(),
             outgoing_packets: Vec::new(),
+            outgoing_publish_receives: Vec::new(),
             packet_counter: 1,
         }
     }
 
-    pub fn store_outgoing_publish(&mut self, mut publish: PublishPacket) -> u16 {
-        assert!(publish.qos == QoS::AtLeastOnce || publish.qos == QoS::ExactlyOnce);
+    pub fn store_outgoing_publish(
+        &mut self,
+        mut publish: PublishPacket,
+        subscriber_qos: QoS,
+    ) -> u16 {
+        assert!(subscriber_qos == QoS::AtLeastOnce || subscriber_qos == QoS::ExactlyOnce);
 
         // TODO(bschwind) - Prevent using packet IDs which already exist in `outgoing_packets`
         let packet_id = self.packet_counter;
         publish.packet_id = Some(self.packet_counter);
+        publish.qos = subscriber_qos;
         publish.is_duplicate = false;
         self.packet_counter += 1;
 
@@ -76,6 +87,7 @@ pub enum BrokerMessage {
     NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
     Publish(String, PublishPacket),
     PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
+    PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
     Subscribe(String, SubscribePacket),   // TODO - replace string client_id with int
     Disconnect(String),
 }
@@ -105,6 +117,7 @@ impl Broker {
     ) {
         let mut session_present = false;
         let mut outgoing_packets = None;
+        let mut outgoing_publish_receives = None;
 
         if let Some(mut session) = self.sessions.remove(&connect_packet.client_id) {
             // Tell session to disconnect
@@ -124,6 +137,7 @@ impl Broker {
 
             if !connect_packet.clean_start && session_present {
                 outgoing_packets = Some(session.outgoing_packets);
+                outgoing_publish_receives = Some(session.outgoing_publish_receives);
             }
         }
 
@@ -170,6 +184,23 @@ impl Broker {
             }
         }
 
+        if let Some(outgoing_publish_receives) = outgoing_publish_receives {
+            // TODO(bschwind) - Support sending a Vec of packets instead of sending
+            //                  these individually so we don't overwhelm the channel.
+            for publish_receive in outgoing_publish_receives {
+                let publish_recv_packet = PublishReceivedPacket {
+                    packet_id: publish_receive,
+                    reason_code: PublishReceivedReason::Success,
+                    reason_string: None,
+                    user_properties: vec![],
+                };
+
+                let _ = client_msg_sender
+                    .try_send(ClientMessage::Packet(Packet::PublishReceived(publish_recv_packet)));
+            }
+        }
+
+        // TOOD(bschwind) - Take over existing outgoing packets with QoS > 0
         self.sessions.insert(
             connect_packet.client_id,
             Session::new(connect_packet.protocol_version, client_msg_sender),
@@ -225,29 +256,11 @@ impl Broker {
     }
 
     fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
-        let sessions = &mut self.sessions;
-        let topic = &packet.topic;
-        self.subscriptions.matching_subscribers(topic, |session_subscription| {
-            if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
-                let outgoing_packet_id = match session_subscription.maximum_qos {
-                    QoS::AtLeastOnce | QoS::ExactlyOnce => {
-                        Some(session.store_outgoing_publish(packet.clone()))
-                    },
-                    _ => None,
-                };
+        let mut is_dup = false;
 
-                let outgoing_packet = PublishPacket {
-                    packet_id: outgoing_packet_id,
-                    is_duplicate: false,
-                    ..packet.clone()
-                };
-
-                let _ = session
-                    .client_sender
-                    .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
-            }
-        });
-
+        // For QoS2, ensure this packet isn't delivered twice. So if we have an outgoing
+        // publish receive with the same ID, just send the publish receive again but don't forward
+        // the message.
         match packet.qos {
             QoS::AtMostOnce => {},
             QoS::AtLeastOnce => {
@@ -266,13 +279,85 @@ impl Broker {
                         .try_send(ClientMessage::Packet(Packet::PublishAck(publish_ack)));
                 }
             },
-            QoS::ExactlyOnce => {},
+            QoS::ExactlyOnce => {
+                if let Some(session) = self.sessions.get_mut(&client_id) {
+                    let packet_id = packet.packet_id.unwrap();
+                    is_dup = session.outgoing_publish_receives.contains(&packet_id);
+
+                    if !is_dup {
+                        session.outgoing_publish_receives.push(packet_id)
+                    }
+
+                    let publish_recv = PublishReceivedPacket {
+                        packet_id: packet
+                            .packet_id
+                            .expect("Packet with QoS 2 should have a packet ID"),
+                        reason_code: PublishReceivedReason::Success,
+                        reason_string: None,
+                        user_properties: vec![],
+                    };
+
+                    let _ = session
+                        .client_sender
+                        .try_send(ClientMessage::Packet(Packet::PublishReceived(publish_recv)));
+                }
+            },
+        }
+
+        let topic = &packet.topic;
+        let sessions = &mut self.sessions;
+
+        if !is_dup {
+            self.subscriptions.matching_subscribers(topic, |session_subscription| {
+                if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
+                    let outgoing_packet_id = match session_subscription.maximum_qos {
+                        QoS::AtLeastOnce | QoS::ExactlyOnce => {
+                            Some(session.store_outgoing_publish(
+                                packet.clone(),
+                                session_subscription.maximum_qos,
+                            ))
+                        },
+                        _ => None,
+                    };
+
+                    let outgoing_packet = PublishPacket {
+                        packet_id: outgoing_packet_id,
+                        is_duplicate: false,
+                        ..packet.clone()
+                    };
+
+                    let _ = session
+                        .client_sender
+                        .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
+                }
+            });
         }
     }
 
     fn handle_publish_ack(&mut self, client_id: String, packet: PublishAckPacket) {
         if let Some(session) = self.sessions.get_mut(&client_id) {
             session.remove_outgoing_publish(packet.packet_id);
+        }
+    }
+
+    fn handle_publish_release(&mut self, client_id: String, packet: PublishReleasePacket) {
+        if let Some(session) = self.sessions.get_mut(&client_id) {
+            if let Some(pos) =
+                session.outgoing_publish_receives.iter().position(|x| *x == packet.packet_id)
+            {
+                session.outgoing_publish_receives.remove(pos);
+
+                let outgoing_packet = PublishCompletePacket {
+                    packet_id: packet.packet_id,
+                    reason_code: PublishCompleteReason::Success,
+                    reason_string: None,
+                    user_properties: vec![],
+                };
+
+                let _ = session
+                    .client_sender
+                    .try_send(ClientMessage::Packet(Packet::PublishComplete(outgoing_packet)));
+            }
         }
     }
 
@@ -293,6 +378,9 @@ impl Broker {
                 },
                 BrokerMessage::PublishAck(client_id, packet) => {
                     self.handle_publish_ack(client_id, packet);
+                },
+                BrokerMessage::PublishRelease(client_id, packet) => {
+                    self.handle_publish_release(client_id, packet);
                 },
             }
         }
