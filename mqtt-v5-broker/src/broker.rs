@@ -71,7 +71,8 @@ impl Session {
     pub fn remove_outgoing_publish(&mut self, packet_id: u16) {
         if let Some(pos) = self.outgoing_packets.iter().position(|p| p.packet_id == Some(packet_id))
         {
-            self.outgoing_packets.remove(pos);
+            let packet = self.outgoing_packets.remove(pos);
+            assert_eq!(packet.qos, QoS::AtLeastOnce);
         }
     }
 }
@@ -322,6 +323,7 @@ impl Broker {
 
                     let outgoing_packet = PublishPacket {
                         packet_id: outgoing_packet_id,
+                        qos: session_subscription.maximum_qos,
                         is_duplicate: false,
                         ..packet.clone()
                     };
