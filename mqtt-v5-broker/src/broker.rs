@@ -60,7 +60,7 @@ impl Session {
 
         // Handle u16 wraparound, 0 is an invalid packet ID
         if self.packet_counter == 0 {
-            self.packet_counter += 1;
+            self.packet_counter = self.packet_counter.wrapping_add(1);
         }
 
         self.outgoing_packets.push(publish);
