@@ -5,7 +5,8 @@ use mqtt_v5::{
         properties::AssignedClientIdentifier, ConnectAckPacket, ConnectPacket, ConnectReason,
         Packet, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
         PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
-        PublishReleasePacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
+        PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason,
+        SubscribePacket,
     },
 };
 use std::collections::HashMap;
@@ -27,6 +28,10 @@ pub struct Session {
     // TODO(bschwind) - Consider a HashSet if order isn't important.
     outgoing_publish_receives: Vec<u16>,
 
+    // Keep track of outgoing PublishReleased packets.
+    // TODO(bschwind) - Consider a HashSet if order isn't important.
+    outgoing_publish_released: Vec<u16>,
+
     packet_counter: u16,
 }
 
@@ -40,6 +45,7 @@ impl Session {
             subscription_tokens: Vec::new(),
             outgoing_packets: Vec::new(),
             outgoing_publish_receives: Vec::new(),
+            outgoing_publish_released: Vec::new(),
             packet_counter: 1,
         }
     }
@@ -89,7 +95,9 @@ pub enum BrokerMessage {
     Publish(String, PublishPacket),
     PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
     PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
-    Subscribe(String, SubscribePacket),   // TODO - replace string client_id with int
+    PublishReceived(String, PublishReceivedPacket),
+    PublishComplete(String, PublishCompletePacket),
+    Subscribe(String, SubscribePacket), // TODO - replace string client_id with int
     Disconnect(String),
 }
 
@@ -363,6 +371,41 @@ impl Broker {
         }
     }
 
+    fn handle_publish_received(&mut self, client_id: String, packet: PublishReceivedPacket) {
+        if let Some(session) = self.sessions.get_mut(&client_id) {
+            if let Some(pos) = session.outgoing_packets.iter().position(|p| {
+                p.qos == QoS::ExactlyOnce
+                    && p.packet_id.map(|id| id == packet.packet_id).unwrap_or(false)
+            }) {
+                // TOOD - remove it here?
+                session.outgoing_packets.remove(pos);
+
+                session.outgoing_publish_released.push(packet.packet_id);
+
+                let outgoing_packet = PublishReleasePacket {
+                    packet_id: packet.packet_id,
+                    reason_code: PublishReleaseReason::Success,
+                    reason_string: None,
+                    user_properties: vec![],
+                };
+
+                let _ = session
+                    .client_sender
+                    .try_send(ClientMessage::Packet(Packet::PublishRelease(outgoing_packet)));
+            }
+        }
+    }
+
+    fn handle_publish_complete(&mut self, client_id: String, packet: PublishCompletePacket) {
+        if let Some(session) = self.sessions.get_mut(&client_id) {
+            if let Some(pos) =
+                session.outgoing_publish_released.iter().position(|x| *x == packet.packet_id)
+            {
+                session.outgoing_publish_released.remove(pos);
+            }
+        }
+    }
+
     pub async fn run(mut self) {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
@@ -383,6 +426,12 @@ impl Broker {
                 },
                 BrokerMessage::PublishRelease(client_id, packet) => {
                     self.handle_publish_release(client_id, packet);
+                },
+                BrokerMessage::PublishReceived(client_id, packet) => {
+                    self.handle_publish_received(client_id, packet);
+                },
+                BrokerMessage::PublishComplete(client_id, packet) => {
+                    self.handle_publish_complete(client_id, packet);
                 },
             }
         }

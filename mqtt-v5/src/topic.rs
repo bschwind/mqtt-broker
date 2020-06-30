@@ -98,7 +98,7 @@ impl FromStr for TopicFilter {
             return Err(TopicParseError::EmptyTopic);
         }
 
-        // TODO - assert no null character U+0000
+        // Assert no null character U+0000
         if filter.contains('\0') {
             return Err(TopicParseError::WildcardOrNullInTopic);
         }
