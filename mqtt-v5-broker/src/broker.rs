@@ -186,7 +186,14 @@ impl Broker {
 
         if let Some(outgoing_packets) = outgoing_packets {
             let _ = client_msg_sender.try_send(ClientMessage::Packets(
-                outgoing_packets.into_iter().map(Packet::Publish).collect(),
+                outgoing_packets
+                    .into_iter()
+                    .map(|mut p| {
+                        // Publish retries have their DUP flag set to true.
+                        p.is_duplicate = true;
+                        Packet::Publish(p)
+                    })
+                    .collect(),
             ));
         }
 
