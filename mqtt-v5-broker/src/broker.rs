@@ -185,28 +185,25 @@ impl Broker {
         let _ = client_msg_sender.try_send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)));
 
         if let Some(outgoing_packets) = outgoing_packets {
-            // TODO(bschwind) - Support sending a Vec of packets instead of sending
-            //                  these individually so we don't overwhelm the channel.
-            for outgoing_packet in outgoing_packets {
-                let _ = client_msg_sender
-                    .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
-            }
+            let _ = client_msg_sender.try_send(ClientMessage::Packets(
+                outgoing_packets.into_iter().map(Packet::Publish).collect(),
+            ));
         }
 
         if let Some(outgoing_publish_receives) = outgoing_publish_receives {
-            // TODO(bschwind) - Support sending a Vec of packets instead of sending
-            //                  these individually so we don't overwhelm the channel.
-            for publish_receive in outgoing_publish_receives {
-                let publish_recv_packet = PublishReceivedPacket {
-                    packet_id: publish_receive,
-                    reason_code: PublishReceivedReason::Success,
-                    reason_string: None,
-                    user_properties: vec![],
-                };
-
-                let _ = client_msg_sender
-                    .try_send(ClientMessage::Packet(Packet::PublishReceived(publish_recv_packet)));
-            }
+            let _ = client_msg_sender.try_send(ClientMessage::Packets(
+                outgoing_publish_receives
+                    .into_iter()
+                    .map(|p| {
+                        Packet::PublishReceived(PublishReceivedPacket {
+                            packet_id: p,
+                            reason_code: PublishReceivedReason::Success,
+                            reason_string: None,
+                            user_properties: vec![],
+                        })
+                    })
+                    .collect(),
+            ));
         }
 
         // TOOD(bschwind) - Take over existing outgoing packets with QoS > 0

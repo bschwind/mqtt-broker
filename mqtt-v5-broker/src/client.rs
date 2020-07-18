@@ -73,6 +73,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 #[derive(Debug, PartialEq)]
 pub enum ClientMessage {
     Packet(Packet),
+    Packets(Vec<Packet>),
     Disconnect,
 }
 
@@ -190,6 +191,11 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
         while let Some(frame) = broker_rx.recv().await {
             match frame {
+                ClientMessage::Packets(packets) => {
+                    sink.send_all(&mut futures::stream::iter(packets).map(Ok))
+                        .await
+                        .expect("Couldn't forward packets to framed socket");
+                },
                 ClientMessage::Packet(packet) => {
                     sink.send(packet).await.expect("Couldn't forward packet to framed socket");
                 },
