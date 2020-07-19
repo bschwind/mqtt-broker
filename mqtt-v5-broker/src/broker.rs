@@ -30,6 +30,7 @@ pub struct Session {
 
     // Keep track of outgoing PublishReleased packets.
     // TODO(bschwind) - Consider a HashSet if order isn't important.
+    // TODO(bschiwnd) - These should be resent when a client reconnects.
     outgoing_publish_released: Vec<u16>,
 
     packet_counter: u16,

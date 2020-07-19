@@ -364,9 +364,10 @@ fn encode_publish_received(
     protocol_version: ProtocolVersion,
 ) {
     bytes.put_u16(packet.packet_id);
-    bytes.put_u8(packet.reason_code as u8);
 
     if protocol_version == ProtocolVersion::V500 {
+        bytes.put_u8(packet.reason_code as u8);
+
         let property_length = packet.property_size(protocol_version);
         encode_variable_int(property_length, bytes);
 
@@ -381,9 +382,10 @@ fn encode_publish_release(
     protocol_version: ProtocolVersion,
 ) {
     bytes.put_u16(packet.packet_id);
-    bytes.put_u8(packet.reason_code as u8);
 
     if protocol_version == ProtocolVersion::V500 {
+        bytes.put_u8(packet.reason_code as u8);
+
         let property_length = packet.property_size(protocol_version);
         encode_variable_int(property_length, bytes);
 
@@ -398,9 +400,10 @@ fn encode_publish_complete(
     protocol_version: ProtocolVersion,
 ) {
     bytes.put_u16(packet.packet_id);
-    bytes.put_u8(packet.reason_code as u8);
 
     if protocol_version == ProtocolVersion::V500 {
+        bytes.put_u8(packet.reason_code as u8);
+
         let property_length = packet.property_size(protocol_version);
         encode_variable_int(property_length, bytes);
 
@@ -510,9 +513,9 @@ fn encode_disconnect(
     bytes: &mut BytesMut,
     protocol_version: ProtocolVersion,
 ) {
-    bytes.put_u8(packet.reason_code as u8);
-
     if protocol_version == ProtocolVersion::V500 {
+        bytes.put_u8(packet.reason_code as u8);
+
         let property_length = packet.property_size(protocol_version);
         encode_variable_int(property_length, bytes);
 
