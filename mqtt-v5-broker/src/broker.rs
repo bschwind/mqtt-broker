@@ -30,7 +30,6 @@ pub struct Session {
 
     // Keep track of outgoing PublishReleased packets.
     // TODO(bschwind) - Consider a HashSet if order isn't important.
-    // TODO(bschiwnd) - These should be resent when a client reconnects.
     outgoing_publish_released: Vec<u16>,
 
     packet_counter: u16,
@@ -127,7 +126,7 @@ impl Broker {
     ) {
         let mut session_present = false;
         let mut outgoing_packets = None;
-        let mut outgoing_publish_receives = None;
+        let mut outgoing_publish_releases = None;
 
         if let Some(mut session) = self.sessions.remove(&connect_packet.client_id) {
             // Tell session to disconnect
@@ -147,7 +146,7 @@ impl Broker {
 
             if !connect_packet.clean_start && session_present {
                 outgoing_packets = Some(session.outgoing_packets);
-                outgoing_publish_receives = Some(session.outgoing_publish_receives);
+                outgoing_publish_releases = Some(session.outgoing_publish_released);
             }
         }
 
@@ -198,14 +197,14 @@ impl Broker {
             ));
         }
 
-        if let Some(outgoing_publish_receives) = outgoing_publish_receives {
+        if let Some(outgoing_publish_releases) = outgoing_publish_releases {
             let _ = client_msg_sender.try_send(ClientMessage::Packets(
-                outgoing_publish_receives
+                outgoing_publish_releases
                     .into_iter()
                     .map(|p| {
-                        Packet::PublishReceived(PublishReceivedPacket {
+                        Packet::PublishRelease(PublishReleasePacket {
                             packet_id: p,
-                            reason_code: PublishReceivedReason::Success,
+                            reason_code: PublishReleaseReason::Success,
                             reason_string: None,
                             user_properties: vec![],
                         })
