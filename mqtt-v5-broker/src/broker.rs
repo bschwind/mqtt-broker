@@ -77,8 +77,7 @@ impl Session {
     pub fn remove_outgoing_publish(&mut self, packet_id: u16) {
         if let Some(pos) = self.outgoing_packets.iter().position(|p| p.packet_id == Some(packet_id))
         {
-            let packet = self.outgoing_packets.remove(pos);
-            assert_eq!(packet.qos, QoS::AtLeastOnce);
+            let _packet = self.outgoing_packets.remove(pos);
         }
     }
 }
