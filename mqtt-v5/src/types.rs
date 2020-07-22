@@ -1279,7 +1279,7 @@ impl PacketSize for Packet {
                 size
             },
             Packet::PublishAck(p) => {
-                // packet_id + reason_code
+                // packet_id
                 let mut size = 2;
 
                 if protocol_version == ProtocolVersion::V500 {
@@ -1293,37 +1293,43 @@ impl PacketSize for Packet {
                 size
             },
             Packet::PublishReceived(p) => {
-                // packet_id + reason_code
-                let mut size = 2 + 1;
+                // packet_id
+                let mut size = 2;
 
                 if protocol_version == ProtocolVersion::V500 {
                     let property_size = p.property_size(protocol_version);
-                    size +=
-                        property_size + VariableByteInt(property_size).calc_size(protocol_version);
+                    // 1 for the reason code
+                    size += 1
+                        + property_size
+                        + VariableByteInt(property_size).calc_size(protocol_version);
                 }
 
                 size
             },
             Packet::PublishRelease(p) => {
-                // packet_id + reason_code
-                let mut size = 2 + 1;
+                // packet_id
+                let mut size = 2;
 
                 if protocol_version == ProtocolVersion::V500 {
                     let property_size = p.property_size(protocol_version);
-                    size +=
-                        property_size + VariableByteInt(property_size).calc_size(protocol_version);
+                    // 1 for the reason code
+                    size += 1
+                        + property_size
+                        + VariableByteInt(property_size).calc_size(protocol_version);
                 }
 
                 size
             },
             Packet::PublishComplete(p) => {
-                // packet_id + reason_code
-                let mut size = 2 + 1;
+                // packet_id
+                let mut size = 2;
 
                 if protocol_version == ProtocolVersion::V500 {
                     let property_size = p.property_size(protocol_version);
-                    size +=
-                        property_size + VariableByteInt(property_size).calc_size(protocol_version);
+                    // 1 for the reason code
+                    size += 1
+                        + property_size
+                        + VariableByteInt(property_size).calc_size(protocol_version);
                 }
 
                 size
@@ -1387,10 +1393,12 @@ impl PacketSize for Packet {
             Packet::PingRequest => 0,
             Packet::PingResponse => 0,
             Packet::Disconnect(p) => {
-                // reason_code
-                let mut size = 1;
+                let mut size = 0;
 
                 if protocol_version == ProtocolVersion::V500 {
+                    // reason_code
+                    size += 1;
+
                     let property_size = p.property_size(protocol_version);
                     size +=
                         property_size + VariableByteInt(property_size).calc_size(protocol_version);

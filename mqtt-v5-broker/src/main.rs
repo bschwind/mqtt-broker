@@ -82,64 +82,66 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
 
     let stream = stream::unfold(
         (ws_stream, read_buf, ProtocolVersion::V311),
-        |(mut ws_stream, mut read_buf, mut protocol_version)| async move {
-            // Loop until we've built up enough data from the WebSocket stream
-            // to decode a new MQTT packet
-            loop {
-                // Try to read an MQTT packet from the read buffer
-                match mqtt_v5::decoder::decode_mqtt(&mut read_buf, protocol_version) {
-                    Ok(Some(packet)) => {
-                        if let Packet::Connect(packet) = &packet {
-                            protocol_version = packet.protocol_version;
-                        }
+        |(mut ws_stream, mut read_buf, mut protocol_version)| {
+            async move {
+                // Loop until we've built up enough data from the WebSocket stream
+                // to decode a new MQTT packet
+                loop {
+                    // Try to read an MQTT packet from the read buffer
+                    match mqtt_v5::decoder::decode_mqtt(&mut read_buf, protocol_version) {
+                        Ok(Some(packet)) => {
+                            if let Packet::Connect(packet) = &packet {
+                                protocol_version = packet.protocol_version;
+                            }
 
-                        // If we got one, return it
-                        return Some((Ok(packet), (ws_stream, read_buf, protocol_version)));
-                    },
-                    Err(e) => {
-                        // If we had a decode error, propagate the error along the stream
-                        return Some((Err(e), (ws_stream, read_buf, protocol_version)));
-                    },
-                    Ok(None) => {
-                        // Otherwise we need more binary data from the WebSocket stream
-                    },
-                }
+                            // If we got one, return it
+                            return Some((Ok(packet), (ws_stream, read_buf, protocol_version)));
+                        },
+                        Err(e) => {
+                            // If we had a decode error, propagate the error along the stream
+                            return Some((Err(e), (ws_stream, read_buf, protocol_version)));
+                        },
+                        Ok(None) => {
+                            // Otherwise we need more binary data from the WebSocket stream
+                        },
+                    }
 
-                let ws_frame = ws_stream.next().await;
+                    let ws_frame = ws_stream.next().await;
 
-                match ws_frame {
-                    Some(Ok(message)) => {
-                        if message.opcode() == Opcode::Close {
-                            return None;
-                        }
+                    match ws_frame {
+                        Some(Ok(message)) => {
+                            if message.opcode() == Opcode::Close {
+                                return None;
+                            }
 
-                        if message.opcode() == Opcode::Ping {
-                            println!("Got a websocket ping");
-                        }
+                            if message.opcode() == Opcode::Ping {
+                                println!("Got a websocket ping");
+                            }
 
-                        if message.opcode() != Opcode::Binary {
-                            // MQTT Control Packets MUST be sent in WebSocket binary data frames
+                            if message.opcode() != Opcode::Binary {
+                                // MQTT Control Packets MUST be sent in WebSocket binary data frames
+                                return Some((
+                                    Err(DecodeError::BadTransport),
+                                    (ws_stream, read_buf, protocol_version),
+                                ));
+                            }
+
+                            read_buf.extend_from_slice(&message.into_data());
+                        },
+                        Some(Err(e)) => {
+                            println!("Error while reading from WebSocket stream: {:?}", e);
+                            // If we had a decode error in the WebSocket layer,
+                            // propagate the it along the stream
                             return Some((
                                 Err(DecodeError::BadTransport),
                                 (ws_stream, read_buf, protocol_version),
                             ));
-                        }
-
-                        read_buf.extend_from_slice(&message.into_data());
-                    },
-                    Some(Err(e)) => {
-                        println!("Error while reading from WebSocket stream: {:?}", e);
-                        // If we had a decode error in the WebSocket layer,
-                        // propagate the it along the stream
-                        return Some((
-                            Err(DecodeError::BadTransport),
-                            (ws_stream, read_buf, protocol_version),
-                        ));
-                    },
-                    None => {
-                        // The WebSocket stream is over, so we are too
-                        return None;
-                    },
+                        },
+                        None => {
+                            // The WebSocket stream is over, so we are too
+                            return None;
+                        },
+                    }
                 }
             }
         },

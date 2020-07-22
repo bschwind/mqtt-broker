@@ -250,10 +250,10 @@ pub mod websocket {
         ) -> Result<(), Self::Error> {
             let response = format!(
                 "HTTP/1.1 101 Switching Protocols\r\n\
-                Upgrade: websocket\r\n\
-                Connection: Upgrade\r\n\
-                Sec-WebSocket-Protocol: mqtt\r\n\
-                Sec-WebSocket-Accept: {}\r\n\r\n",
+                 Upgrade: websocket\r\n\
+                 Connection: Upgrade\r\n\
+                 Sec-WebSocket-Protocol: mqtt\r\n\
+                 Sec-WebSocket-Accept: {}\r\n\r\n",
                 websocket_key
             );
 

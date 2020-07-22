@@ -32,22 +32,20 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         println!("got a packet: {:?}", first_packet);
 
         match first_packet {
-            Some(Ok(Packet::Connect(connect_packet))) => {
+            Some(Ok(Packet::Connect(mut connect_packet))) => {
                 let (sender, receiver) = mpsc::channel(5);
 
-                let client_id = if connect_packet.client_id.is_empty() {
-                    // If the Client connects using a zero length Client Identifier,
-                    // the Server MUST respond with a CONNACK containing an Assigned Client Identifier.
-                    nanoid!()
-                } else {
-                    connect_packet.client_id
-                };
+                if connect_packet.client_id.is_empty() {
+                    connect_packet.client_id = nanoid!();
+                }
+
+                let client_id = connect_packet.client_id.clone();
 
                 let protocol_version = connect_packet.protocol_version;
                 let self_tx = sender.clone();
 
                 self.broker_tx
-                    .send(BrokerMessage::NewClient(client_id.clone(), protocol_version, sender))
+                    .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
                     .await
                     .expect("Couldn't send NewClient message to broker");
 
@@ -75,6 +73,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 #[derive(Debug, PartialEq)]
 pub enum ClientMessage {
     Packet(Packet),
+    Packets(Vec<Packet>),
     Disconnect,
 }
 
@@ -129,13 +128,12 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                     Packet::Publish(packet) => {
                         match packet.qos {
                             QoS::AtMostOnce => {},
-                            QoS::AtLeastOnce => {
+                            QoS::AtLeastOnce | QoS::ExactlyOnce => {
                                 assert!(
                                     packet.packet_id.is_some(),
                                     "Packets with QoS 1&2 need packet identifiers"
                                 );
                             },
-                            QoS::ExactlyOnce => {},
                         }
 
                         broker_tx
@@ -147,7 +145,25 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         broker_tx
                             .send(BrokerMessage::PublishAck(client_id.clone(), packet))
                             .await
-                            .expect("Couldn't send Publish message to broker");
+                            .expect("Couldn't send PublishAck message to broker");
+                    },
+                    Packet::PublishRelease(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishRelease(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send PublishRelease message to broker");
+                    },
+                    Packet::PublishReceived(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishReceived(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send PublishReceive message to broker");
+                    },
+                    Packet::PublishComplete(packet) => {
+                        broker_tx
+                            .send(BrokerMessage::PublishComplete(client_id.clone(), packet))
+                            .await
+                            .expect("Couldn't send PublishCompelte message to broker");
                     },
                     Packet::PingRequest => {
                         self_tx
@@ -175,6 +191,11 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
         while let Some(frame) = broker_rx.recv().await {
             match frame {
+                ClientMessage::Packets(packets) => {
+                    sink.send_all(&mut futures::stream::iter(packets).map(Ok))
+                        .await
+                        .expect("Couldn't forward packets to framed socket");
+                },
                 ClientMessage::Packet(packet) => {
                     sink.send(packet).await.expect("Couldn't forward packet to framed socket");
                 },
