@@ -212,7 +212,7 @@ impl Broker {
             ));
         }
 
-        // TOOD(bschwind) - Take over existing outgoing packets with QoS > 0
+        // TODO(bschwind) - Take over existing outgoing packets with QoS > 0
         self.sessions.insert(
             connect_packet.client_id,
             Session::new(connect_packet.protocol_version, client_msg_sender),
@@ -380,7 +380,7 @@ impl Broker {
                 p.qos == QoS::ExactlyOnce
                     && p.packet_id.map(|id| id == packet.packet_id).unwrap_or(false)
             }) {
-                // TOOD - remove it here?
+                // TODO(bschwind) - remove it here?
                 session.outgoing_packets.remove(pos);
 
                 session.outgoing_publish_released.push(packet.packet_id);
