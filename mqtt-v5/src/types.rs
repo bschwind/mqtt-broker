@@ -49,6 +49,7 @@ pub enum ProtocolError {
     MalformedPacket(DecodeError),
     ConnectTimedOut,
     FirstPacketNotConnect,
+    InvalidProtocolName,
 }
 
 #[repr(u8)]

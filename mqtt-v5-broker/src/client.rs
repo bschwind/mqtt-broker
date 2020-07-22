@@ -33,6 +33,17 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
         match first_packet {
             Some(Ok(Packet::Connect(mut connect_packet))) => {
+                let protocol_version = connect_packet.protocol_version;
+
+                if connect_packet.protocol_name != "MQTT" {
+                    if protocol_version == ProtocolVersion::V500 {
+                        // TODO(bschwind) - Respond to the client with
+                        //                  0x84 (Unsupported Protocol Version)
+                    }
+
+                    return Err(ProtocolError::InvalidProtocolName);
+                }
+
                 let (sender, receiver) = mpsc::channel(5);
 
                 if connect_packet.client_id.is_empty() {
@@ -41,7 +52,6 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
                 let client_id = connect_packet.client_id.clone();
 
-                let protocol_version = connect_packet.protocol_version;
                 let self_tx = sender.clone();
 
                 self.broker_tx
