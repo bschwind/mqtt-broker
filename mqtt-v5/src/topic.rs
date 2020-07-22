@@ -36,6 +36,15 @@ pub enum TopicLevel<'a> {
     MultiLevelWildcard,
 }
 
+impl<'a> TopicLevel<'a> {
+    pub fn has_leading_dollar(&self) -> bool {
+        match self {
+            TopicLevel::Concrete(level_str) => level_str.starts_with('$'),
+            TopicLevel::SingleLevelWildcard | TopicLevel::MultiLevelWildcard => false,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TopicParseError {
     EmptyTopic,

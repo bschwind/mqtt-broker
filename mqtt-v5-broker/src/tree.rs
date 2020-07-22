@@ -208,15 +208,23 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
             let level = &levels[current_level];
 
             for (_, subscriber) in &current_tree.multi_level_wildcards {
-                sub_fn(subscriber);
+                // Don't allow wildcard subscribers to receive messages
+                // with leading dollar signs, like '$SYS/stats'
+                if current_level != 0 || !level.has_leading_dollar() {
+                    sub_fn(subscriber);
+                }
             }
 
             if let Some(sub_tree) = &current_tree.single_level_wildcards {
-                if current_level + 1 < levels.len() {
-                    tree_stack.push((sub_tree, current_level + 1));
-                } else {
-                    for (_, subscriber) in &sub_tree.subscribers {
-                        sub_fn(subscriber);
+                // Don't allow wildcard subscribers to receive messages
+                // with leading dollar signs, like '$SYS/stats'
+                if current_level != 0 || !level.has_leading_dollar() {
+                    if current_level + 1 < levels.len() {
+                        tree_stack.push((sub_tree, current_level + 1));
+                    } else {
+                        for (_, subscriber) in &sub_tree.subscribers {
+                            sub_fn(subscriber);
+                        }
                     }
                 }
             }
@@ -247,14 +255,18 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
 #[cfg(test)]
 mod tests {
     use crate::tree::SubscriptionTree;
-    use std::{collections::HashSet, iter::FromIterator};
+    use std::{collections::HashSet, fmt::Debug, hash::Hash, iter::FromIterator};
 
-    fn assert_subscribers(tree: &SubscriptionTree<u32>, topic: &str, numbers: &[u32]) {
-        let expected_set = HashSet::from_iter(numbers.iter().cloned());
+    fn assert_subscribers<T: Debug + Hash + Eq + Clone>(
+        tree: &SubscriptionTree<T>,
+        topic: &str,
+        subscribers: &[T],
+    ) {
+        let expected_set = HashSet::from_iter(subscribers.iter().cloned());
         let mut actual_set = HashSet::new();
 
         tree.matching_subscribers(&topic.parse().unwrap(), |s| {
-            actual_set.insert(*s);
+            actual_set.insert(s.clone());
         });
 
         assert_eq!(expected_set, actual_set);
@@ -326,5 +338,34 @@ mod tests {
         assert!(sub_tree.is_empty());
 
         assert!(sub_tree.remove(&"home/kitchen/+".parse().unwrap(), sub_6).is_none());
+    }
+
+    #[test]
+    fn test_leading_dollar() {
+        let mut sub_tree = SubscriptionTree::new();
+        sub_tree.insert(&"$SYS/in-flight-message-count".parse().unwrap(), "sub_1");
+        sub_tree.insert(&"$SYS/num-connections".parse().unwrap(), "sub_2");
+        sub_tree.insert(&"$SYS/#".parse().unwrap(), "sub_3");
+        sub_tree.insert(&"$SYS/+/stats".parse().unwrap(), "sub_3_1");
+        sub_tree.insert(&"$share/group_a/home/kitchen".parse().unwrap(), "sub_4");
+        sub_tree.insert(&"#".parse().unwrap(), "sub_5");
+        sub_tree.insert(&"+".parse().unwrap(), "sub_6");
+        sub_tree.insert(&"/".parse().unwrap(), "sub_7");
+        sub_tree.insert(&"+/monitor/Clients".parse().unwrap(), "sub_8");
+        sub_tree.insert(&"$SYS/monitor/+".parse().unwrap(), "sub_9");
+
+        // sub_10 gets everything.
+        sub_tree.insert(&"#".parse().unwrap(), "sub_10");
+        sub_tree.insert(&"$SYS/#".parse().unwrap(), "sub_10");
+
+        sub_tree.insert(&"$whatever".parse().unwrap(), "sub_11");
+
+        assert!(!sub_tree.is_empty());
+        assert_subscribers(&sub_tree, "home", &["sub_5", "sub_6", "sub_10"]);
+        assert_subscribers(&sub_tree, "$whatever", &["sub_11"]);
+        assert_subscribers(&sub_tree, "$nothing", &[]);
+        assert_subscribers(&sub_tree, "$SYS/monitor/Clients", &["sub_3", "sub_9", "sub_10"]);
+        assert_subscribers(&sub_tree, "$SYS/num-connections", &["sub_2", "sub_3", "sub_10"]);
+        assert_subscribers(&sub_tree, "$SYS/server/stats", &["sub_3", "sub_3_1", "sub_10"]);
     }
 }
