@@ -5,6 +5,7 @@ use crate::{
 use bytes::{BufMut, Bytes, BytesMut};
 use num_enum::TryFromPrimitive;
 use properties::*;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub enum DecodeError {
@@ -50,6 +51,7 @@ pub enum ProtocolError {
     ConnectTimedOut,
     FirstPacketNotConnect,
     InvalidProtocolName,
+    KeepAliveTimeout,
 }
 
 #[repr(u8)]
@@ -729,9 +731,9 @@ pub enum AuthenticateReason {
 }
 
 // Payloads
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FinalWill {
-    pub topic: String,
+    pub topic: String, // TODO(bschwind) - Use Topic type here.
     pub payload: Bytes,
     pub qos: QoS,
     pub should_retain: bool,
@@ -744,6 +746,12 @@ pub struct FinalWill {
     pub response_topic: Option<ResponseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
+}
+
+impl FinalWill {
+    pub fn will_delay_duration(&self) -> Option<Duration> {
+        self.will_delay_interval.as_ref().map(|d| Duration::from_secs(d.0 as u64))
+    }
 }
 
 impl PacketSize for FinalWill {
@@ -815,6 +823,12 @@ pub struct ConnectPacket {
     pub will: Option<FinalWill>,
     pub user_name: Option<String>,
     pub password: Option<String>,
+}
+
+impl ConnectPacket {
+    pub fn session_expiry_duration(&self) -> Option<Duration> {
+        self.session_expiry_interval.as_ref().map(|d| Duration::from_secs(d.0 as u64))
+    }
 }
 
 impl PropertySize for ConnectPacket {
@@ -923,6 +937,33 @@ impl PropertySize for PublishPacket {
         property_size += self.content_type.calc_size(protocol_version);
 
         property_size
+    }
+}
+
+impl From<FinalWill> for PublishPacket {
+    fn from(will: FinalWill) -> Self {
+        Self {
+            is_duplicate: false,
+            qos: will.qos,
+            retain: will.should_retain,
+
+            // Variable header
+            topic: will.topic.parse().unwrap(), // TODO(bschwind) - Add a Topic type directly to FinalWill
+            packet_id: None,
+
+            // Properties
+            payload_format_indicator: will.payload_format_indicator,
+            message_expiry_interval: will.message_expiry_interval,
+            topic_alias: None,
+            response_topic: will.response_topic,
+            correlation_data: will.correlation_data,
+            user_properties: will.user_properties,
+            subscription_identifier: None,
+            content_type: will.content_type,
+
+            // Payload
+            payload: will.payload,
+        }
     }
 }
 

@@ -3,13 +3,16 @@ use mqtt_v5::{
     topic::TopicFilter,
     types::{
         properties::AssignedClientIdentifier, ConnectAckPacket, ConnectPacket, ConnectReason,
-        Packet, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
-        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
-        PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason,
-        SubscribePacket,
+        DisconnectReason, FinalWill, Packet, ProtocolVersion, PublishAckPacket, PublishAckReason,
+        PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
+        PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket,
+        SubscribeAckReason, SubscribePacket,
     },
 };
-use std::collections::HashMap;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    time::Duration,
+};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 pub struct Session {
@@ -33,10 +36,22 @@ pub struct Session {
     outgoing_publish_released: Vec<u16>,
 
     packet_counter: u16,
+
+    // Indicates if a network connection is currently attached to this session.
+    connected: bool,
+
+    session_expiry_interval: Option<Duration>,
+
+    will: Option<FinalWill>,
 }
 
 impl Session {
-    pub fn new(protocol_version: ProtocolVersion, client_sender: Sender<ClientMessage>) -> Self {
+    pub fn new(
+        protocol_version: ProtocolVersion,
+        will: Option<FinalWill>,
+        session_expiry_interval: Option<Duration>,
+        client_sender: Sender<ClientMessage>,
+    ) -> Self {
         Self {
             protocol_version,
             // subscriptions: HashSet::new(),
@@ -47,6 +62,9 @@ impl Session {
             outgoing_publish_receives: Vec::new(),
             outgoing_publish_released: Vec::new(),
             packet_counter: 1,
+            connected: true,
+            session_expiry_interval,
+            will,
         }
     }
 
@@ -89,6 +107,12 @@ struct SessionSubscription {
 }
 
 #[derive(Debug)]
+pub enum WillDisconnectLogic {
+    Send,
+    DoNotSend,
+}
+
+#[derive(Debug)]
 pub enum BrokerMessage {
     NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
     Publish(String, PublishPacket),
@@ -96,8 +120,9 @@ pub enum BrokerMessage {
     PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
     PublishReceived(String, PublishReceivedPacket),
     PublishComplete(String, PublishCompletePacket),
+    PublishFinalWill(String, FinalWill),
     Subscribe(String, SubscribePacket), // TODO - replace string client_id with int
-    Disconnect(String),
+    Disconnect(String, WillDisconnectLogic),
 }
 
 pub struct Broker {
@@ -105,6 +130,12 @@ pub struct Broker {
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
     subscriptions: SubscriptionTree<SessionSubscription>,
+}
+
+struct ClientTakeoverData {
+    session_present: bool,
+    outgoing_packets: Vec<PublishPacket>,
+    outgoing_publish_released: Vec<u16>,
 }
 
 impl Broker {
@@ -118,6 +149,55 @@ impl Broker {
         self.sender.clone()
     }
 
+    fn take_over_existing_client(
+        &mut self,
+        new_client_clean_start: bool,
+        mut existing_session: Session,
+    ) -> ClientTakeoverData {
+        // If the Server accepts a connection with Clean Start set to 1, the Server MUST set Session Present to 0 in the
+        // CONNACK packet in addition to setting a 0x00 (Success) Reason Code in the CONNACK packet [MQTT-3.2.2-2].
+        // If the Server accepts a connection with Clean Start set to 0 and the Server has Session State for the ClientID,
+        // it MUST set Session Present to 1 in the CONNACK packet, otherwise it MUST set Session Present to 0 in the CONNACK packet.
+        let session_present = !new_client_clean_start;
+
+        if existing_session.connected {
+            existing_session.connected = false;
+
+            // Unsubscribe the old session from all topics it subscribed to.
+            for (topic, token) in existing_session.subscription_tokens {
+                self.subscriptions.remove(&topic, token);
+            }
+
+            let _ = existing_session
+                .client_sender
+                .try_send(ClientMessage::Disconnect(DisconnectReason::SessionTakenOver));
+
+            // Publish the session's will if required.
+            if let Some(will) = existing_session.will {
+                // If the Will Delay Interval of the existing Network Connection is 0 and
+                // there is a Will Message, it will be sent because the Network Connection
+                // is closed. If the Session Expiry Interval of the existing Network Connection
+                // is 0, or the new Network Connection has Clean Start set to 1 then if the
+                // existing Network Connection has a Will Message it will be sent because the
+                // original Session is ended on the takeover.
+
+                let should_send_will = will.will_delay_interval.is_none()
+                    || existing_session.session_expiry_interval.is_none()
+                    || new_client_clean_start;
+
+                if should_send_will {
+                    self.publish_message(will.into());
+                }
+            }
+        }
+
+        ClientTakeoverData {
+            session_present,
+            outgoing_packets: existing_session.outgoing_packets,
+            outgoing_publish_released: existing_session.outgoing_publish_released,
+        }
+    }
+
     fn handle_new_client(
         &mut self,
         connect_packet: ConnectPacket,
@@ -125,27 +205,17 @@ impl Broker {
     ) {
         let mut session_present = false;
         let mut outgoing_packets = None;
-        let mut outgoing_publish_releases = None;
+        let mut outgoing_publish_released = None;
 
-        if let Some(mut session) = self.sessions.remove(&connect_packet.client_id) {
-            // Tell session to disconnect
-            session_present = true;
-            println!("Telling existing session to disconnect");
+        if let Some(session) = self.sessions.remove(&connect_packet.client_id) {
+            let client_takeover_data =
+                self.take_over_existing_client(connect_packet.clean_start, session);
 
-            // TODO(bschwind) - Unify this logic with handle_disconnect()
-            for (topic, token) in session.subscription_tokens {
-                self.subscriptions.remove(&topic, token);
-            }
-
-            // TODO(bschwind) - Publish the client's will and send a Disconnect
-            //                  packet with Reason Code 0x8E (Session taken over).
-            //                  Also remove all session subscriptions like handle_disconnect().
-
-            let _ = session.client_sender.try_send(ClientMessage::Disconnect);
+            session_present = client_takeover_data.session_present;
 
             if !connect_packet.clean_start && session_present {
-                outgoing_packets = Some(session.outgoing_packets);
-                outgoing_publish_releases = Some(session.outgoing_publish_released);
+                outgoing_packets = Some(client_takeover_data.outgoing_packets);
+                outgoing_publish_released = Some(client_takeover_data.outgoing_publish_released);
             }
         }
 
@@ -196,9 +266,9 @@ impl Broker {
             ));
         }
 
-        if let Some(outgoing_publish_releases) = outgoing_publish_releases {
+        if let Some(outgoing_publish_released) = outgoing_publish_released {
             let _ = client_msg_sender.try_send(ClientMessage::Packets(
-                outgoing_publish_releases
+                outgoing_publish_released
                     .into_iter()
                     .map(|p| {
                         Packet::PublishRelease(PublishReleasePacket {
@@ -213,9 +283,16 @@ impl Broker {
         }
 
         // TODO(bschwind) - Take over existing outgoing packets with QoS > 0
+        let session_expiry_duration = connect_packet.session_expiry_duration();
+
         self.sessions.insert(
             connect_packet.client_id,
-            Session::new(connect_packet.protocol_version, client_msg_sender),
+            Session::new(
+                connect_packet.protocol_version,
+                connect_packet.will,
+                session_expiry_duration,
+                client_msg_sender,
+            ),
         );
     }
 
@@ -258,13 +335,92 @@ impl Broker {
         }
     }
 
-    fn handle_disconnect(&mut self, client_id: String) {
+    fn handle_disconnect(&mut self, client_id: String, will_disconnect_logic: WillDisconnectLogic) {
         println!("Client ID {} disconnected", client_id);
-        if let Some(session) = self.sessions.remove(&client_id) {
-            for (topic, token) in session.subscription_tokens {
-                self.subscriptions.remove(&topic, token);
+
+        let mut disconnect_will = None;
+        let mut session_expiry_duration = None;
+
+        if let Entry::Occupied(mut session_entry) = self.sessions.entry(client_id.clone()) {
+            session_entry.get_mut().connected = false;
+
+            if let Some(expiry_interval) = session_entry.get().session_expiry_interval {
+                // The Will Message MUST be published after the Network Connection is subsequently
+                // closed and either the Will Delay Interval has elapsed or the Session ends, unless
+                // the Will Message has been deleted by the Server on receipt of a DISCONNECT packet
+                // with Reason Code 0x00 (Normal disconnection) or a new Network Connection for the
+                // ClientID is opened before the Will Delay Interval has elapsed.
+                if let Some(will) = &session_entry.get().will {
+                    disconnect_will = Some(will.clone());
+                    session_expiry_duration = Some(expiry_interval);
+                }
+
+            // TODO(bschwind) - Schedule the session to be deleted after the session expiry interval.
+            } else {
+                let session = session_entry.remove();
+
+                // Unsubscribe the old session from all topics it subscribed to.
+                for (topic, token) in session.subscription_tokens {
+                    self.subscriptions.remove(&topic, token);
+                }
+
+                if let Some(will) = session.will {
+                    disconnect_will = Some(will);
+                }
+            }
+
+            // Schedule the will to be sent
+            if let Some(will) = disconnect_will {
+                match will_disconnect_logic {
+                    WillDisconnectLogic::Send => {
+                        let will_send_delay_duration =
+                            session_expiry_duration.unwrap_or_else(|| Duration::from_secs(0)).min(
+                                will.will_delay_duration()
+                                    .unwrap_or_else(|| Duration::from_secs(0)),
+                            );
+                        let mut broker_sender = self.sender.clone();
+
+                        tokio::spawn(async move {
+                            let _ = tokio::time::delay_for(will_send_delay_duration).await;
+                            let _ = broker_sender
+                                .send(BrokerMessage::PublishFinalWill(client_id, will))
+                                .await;
+                        });
+                    },
+                    WillDisconnectLogic::DoNotSend => {},
+                }
             }
         }
+    }
+
+    fn publish_message(&mut self, packet: PublishPacket) {
+        let topic = &packet.topic;
+        let sessions = &mut self.sessions;
+
+        self.subscriptions.matching_subscribers(topic, |session_subscription| {
+            if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
+                let outgoing_packet_id = match session_subscription.maximum_qos {
+                    QoS::AtLeastOnce | QoS::ExactlyOnce => {
+                        Some(session.store_outgoing_publish(
+                            packet.clone(),
+                            session_subscription.maximum_qos,
+                        ))
+                    },
+                    _ => None,
+                };
+
+                let outgoing_packet = PublishPacket {
+                    packet_id: outgoing_packet_id,
+                    qos: session_subscription.maximum_qos,
+                    is_duplicate: false,
+                    ..packet.clone()
+                };
+
+                let _ = session
+                    .client_sender
+                    .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
+            }
+        });
     }
 
     fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
@@ -316,34 +472,8 @@ impl Broker {
             },
         }
 
-        let topic = &packet.topic;
-        let sessions = &mut self.sessions;
-
         if !is_dup {
-            self.subscriptions.matching_subscribers(topic, |session_subscription| {
-                if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
-                    let outgoing_packet_id = match session_subscription.maximum_qos {
-                        QoS::AtLeastOnce | QoS::ExactlyOnce => {
-                            Some(session.store_outgoing_publish(
-                                packet.clone(),
-                                session_subscription.maximum_qos,
-                            ))
-                        },
-                        _ => None,
-                    };
-
-                    let outgoing_packet = PublishPacket {
-                        packet_id: outgoing_packet_id,
-                        qos: session_subscription.maximum_qos,
-                        is_duplicate: false,
-                        ..packet.clone()
-                    };
-
-                    let _ = session
-                        .client_sender
-                        .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
-                }
-            });
+            self.publish_message(packet);
         }
     }
 
@@ -409,6 +539,20 @@ impl Broker {
         }
     }
 
+    fn publish_final_will(&mut self, client_id: String, final_will: FinalWill) {
+        if let Some(session) = self.sessions.get_mut(&client_id) {
+            if session.connected {
+                // They've reconnected, don't send out the will message.
+                self.publish_message(final_will.into());
+            } else {
+                // They haven't reconnected, send out the will message.
+            }
+        } else {
+            // No existing session, send out the will message.
+            self.publish_message(final_will.into());
+        }
+    }
+
     pub async fn run(mut self) {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
@@ -418,8 +562,8 @@ impl Broker {
                 BrokerMessage::Subscribe(client_id, packet) => {
                     self.handle_subscribe(client_id, packet);
                 },
-                BrokerMessage::Disconnect(client_id) => {
-                    self.handle_disconnect(client_id);
+                BrokerMessage::Disconnect(client_id, will_disconnect_logic) => {
+                    self.handle_disconnect(client_id, will_disconnect_logic);
                 },
                 BrokerMessage::Publish(client_id, packet) => {
                     self.handle_publish(client_id, packet);
@@ -435,6 +579,9 @@ impl Broker {
                 },
                 BrokerMessage::PublishComplete(client_id, packet) => {
                     self.handle_publish_complete(client_id, packet);
+                },
+                BrokerMessage::PublishFinalWill(client_id, final_will) => {
+                    self.publish_final_will(client_id, final_will);
                 },
             }
         }
