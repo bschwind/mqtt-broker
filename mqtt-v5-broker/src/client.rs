@@ -110,6 +110,7 @@ pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = Enco
 impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeError>>
     Client<ST, SI>
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         protocol_version: ProtocolVersion,

@@ -2,11 +2,12 @@ use crate::{client::ClientMessage, tree::SubscriptionTree};
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
-        properties::AssignedClientIdentifier, ConnectAckPacket, ConnectPacket, ConnectReason,
-        DisconnectReason, FinalWill, Packet, ProtocolVersion, PublishAckPacket, PublishAckReason,
-        PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
-        PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket,
-        SubscribeAckReason, SubscribePacket,
+        properties::{AssignedClientIdentifier, SessionExpiryInterval},
+        ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectReason, FinalWill, Packet,
+        ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
+        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
+        PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason,
+        SubscribePacket,
     },
 };
 use std::{
@@ -68,6 +69,25 @@ impl Session {
         }
     }
 
+    /// Turn self, an existing Session, into a new session suitable
+    /// for a client which just connected.
+    pub fn into_new_session(
+        self,
+        protocol_version: ProtocolVersion,
+        will: Option<FinalWill>,
+        session_expiry_interval: Option<Duration>,
+        client_sender: Sender<ClientMessage>,
+    ) -> Self {
+        Self {
+            protocol_version,
+            client_sender,
+            connected: true,
+            session_expiry_interval,
+            will,
+            ..self
+        }
+    }
+
     pub fn store_outgoing_publish(
         &mut self,
         mut publish: PublishPacket,
@@ -80,7 +100,7 @@ impl Session {
         publish.packet_id = Some(self.packet_counter);
         publish.qos = subscriber_qos;
         publish.is_duplicate = false;
-        self.packet_counter += 1;
+        self.packet_counter = self.packet_counter.wrapping_add(1);
 
         // Handle u16 wraparound, 0 is an invalid packet ID
         if self.packet_counter == 0 {
@@ -96,6 +116,39 @@ impl Session {
         if let Some(pos) = self.outgoing_packets.iter().position(|p| p.packet_id == Some(packet_id))
         {
             let _packet = self.outgoing_packets.remove(pos);
+        }
+    }
+
+    fn resend_packets(&mut self) {
+        if !self.outgoing_packets.is_empty() {
+            let _ = self.client_sender.try_send(ClientMessage::Packets(
+                self.outgoing_packets
+                    .iter()
+                    .cloned()
+                    .map(|mut p| {
+                        // Publish retries have their DUP flag set to true.
+                        p.is_duplicate = true;
+                        Packet::Publish(p)
+                    })
+                    .collect(),
+            ));
+        }
+
+        if !self.outgoing_publish_released.is_empty() {
+            let _ = self.client_sender.try_send(ClientMessage::Packets(
+                self.outgoing_publish_released
+                    .iter()
+                    .cloned()
+                    .map(|p| {
+                        Packet::PublishRelease(PublishReleasePacket {
+                            packet_id: p,
+                            reason_code: PublishReleaseReason::Success,
+                            reason_string: None,
+                            user_properties: vec![],
+                        })
+                    })
+                    .collect(),
+            ));
         }
     }
 }
@@ -132,12 +185,6 @@ pub struct Broker {
     subscriptions: SubscriptionTree<SessionSubscription>,
 }
 
-struct ClientTakeoverData {
-    session_present: bool,
-    outgoing_packets: Vec<PublishPacket>,
-    outgoing_publish_released: Vec<u16>,
-}
-
 impl Broker {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(100);
@@ -151,29 +198,21 @@ impl Broker {
 
     fn take_over_existing_client(
         &mut self,
+        client_id: &str,
         new_client_clean_start: bool,
-        mut existing_session: Session,
-    ) -> ClientTakeoverData {
-        // If the Server accepts a connection with Clean Start set to 1, the Server MUST set Session Present to 0 in the
-        // CONNACK packet in addition to setting a 0x00 (Success) Reason Code in the CONNACK packet [MQTT-3.2.2-2].
-        // If the Server accepts a connection with Clean Start set to 0 and the Server has Session State for the ClientID,
-        // it MUST set Session Present to 1 in the CONNACK packet, otherwise it MUST set Session Present to 0 in the CONNACK packet.
-        let session_present = !new_client_clean_start;
-
-        if existing_session.connected {
-            existing_session.connected = false;
-
-            // Unsubscribe the old session from all topics it subscribed to.
-            for (topic, token) in existing_session.subscription_tokens {
-                self.subscriptions.remove(&topic, token);
+    ) -> Option<Session> {
+        let existing_session = self.sessions.remove(client_id).map(|mut existing_session| {
+            if existing_session.connected {
+                if let Err(e) = existing_session
+                    .client_sender
+                    .try_send(ClientMessage::Disconnect(DisconnectReason::SessionTakenOver))
+                {
+                    println!("Failed to send disconnect packet to taken-over session - {:?}", e);
+                }
             }
 
-            let _ = existing_session
-                .client_sender
-                .try_send(ClientMessage::Disconnect(DisconnectReason::SessionTakenOver));
-
             // Publish the session's will if required.
-            if let Some(will) = existing_session.will {
+            if let Some(will) = &existing_session.will {
                 // If the Will Delay Interval of the existing Network Connection is 0 and
                 // there is a Will Message, it will be sent because the Network Connection
                 // is closed. If the Session Expiry Interval of the existing Network Connection
@@ -186,16 +225,22 @@ impl Broker {
                     || new_client_clean_start;
 
                 if should_send_will {
-                    self.publish_message(will.into());
+                    self.publish_message(will.clone().into());
                 }
             }
+
+            existing_session
+        });
+
+        // If the Server accepts a connection with Clean Start set to 1, the Server MUST set Session Present to 0 in the
+        // CONNACK packet in addition to setting a 0x00 (Success) Reason Code in the CONNACK packet [MQTT-3.2.2-2].
+        // If the Server accepts a connection with Clean Start set to 0 and the Server has Session State for the ClientID,
+        // it MUST set Session Present to 1 in the CONNACK packet, otherwise it MUST set Session Present to 0 in the CONNACK packet.
+        if new_client_clean_start {
+            return None;
         }
 
-        ClientTakeoverData {
-            session_present,
-            outgoing_packets: existing_session.outgoing_packets,
-            outgoing_publish_released: existing_session.outgoing_publish_released,
-        }
+        existing_session
     }
 
     fn handle_new_client(
@@ -203,20 +248,12 @@ impl Broker {
         connect_packet: ConnectPacket,
         mut client_msg_sender: Sender<ClientMessage>,
     ) {
-        let mut session_present = false;
-        let mut outgoing_packets = None;
-        let mut outgoing_publish_released = None;
+        let mut takeover_session =
+            self.take_over_existing_client(&connect_packet.client_id, connect_packet.clean_start);
+        let session_present = takeover_session.is_some();
 
-        if let Some(session) = self.sessions.remove(&connect_packet.client_id) {
-            let client_takeover_data =
-                self.take_over_existing_client(connect_packet.clean_start, session);
-
-            session_present = client_takeover_data.session_present;
-
-            if !connect_packet.clean_start && session_present {
-                outgoing_packets = Some(client_takeover_data.outgoing_packets);
-                outgoing_publish_released = Some(client_takeover_data.outgoing_publish_released);
-            }
+        if let Some(existing_session) = &mut takeover_session {
+            existing_session.resend_packets();
         }
 
         println!(
@@ -224,13 +261,24 @@ impl Broker {
             connect_packet.client_id, connect_packet.protocol_version
         );
 
+        let session_expiry_interval = match connect_packet.session_expiry_interval {
+            Some(interval) => Some(interval),
+            None if !connect_packet.clean_start => {
+                // If the client passed "clean_start = false", we'll give them
+                // a 10 minute session so they can go offline and still receive
+                // messages.
+                Some(SessionExpiryInterval(10 * 60))
+            },
+            None => None,
+        };
+
         let connect_ack = ConnectAckPacket {
             // Variable header
             session_present,
             reason_code: ConnectReason::Success,
 
             // Properties
-            session_expiry_interval: None,
+            session_expiry_interval,
             receive_maximum: None,
             maximum_qos: None,
             retain_available: None,
@@ -253,52 +301,51 @@ impl Broker {
 
         let _ = client_msg_sender.try_send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)));
 
-        if let Some(outgoing_packets) = outgoing_packets {
-            let _ = client_msg_sender.try_send(ClientMessage::Packets(
-                outgoing_packets
-                    .into_iter()
-                    .map(|mut p| {
-                        // Publish retries have their DUP flag set to true.
-                        p.is_duplicate = true;
-                        Packet::Publish(p)
-                    })
-                    .collect(),
-            ));
-        }
+        let session_expiry_duration =
+            session_expiry_interval.map(|i| Duration::from_secs(i.0 as u64));
 
-        if let Some(outgoing_publish_released) = outgoing_publish_released {
-            let _ = client_msg_sender.try_send(ClientMessage::Packets(
-                outgoing_publish_released
-                    .into_iter()
-                    .map(|p| {
-                        Packet::PublishRelease(PublishReleasePacket {
-                            packet_id: p,
-                            reason_code: PublishReleaseReason::Success,
-                            reason_string: None,
-                            user_properties: vec![],
-                        })
-                    })
-                    .collect(),
-            ));
-        }
+        let new_session = if let Some(existing_session) = takeover_session {
+            let mut new_session = existing_session.into_new_session(
+                connect_packet.protocol_version,
+                connect_packet.will,
+                session_expiry_duration,
+                client_msg_sender,
+            );
 
-        // TODO(bschwind) - Take over existing outgoing packets with QoS > 0
-        let session_expiry_duration = connect_packet.session_expiry_duration();
+            new_session.resend_packets();
 
-        self.sessions.insert(
-            connect_packet.client_id,
+            new_session
+        } else {
             Session::new(
                 connect_packet.protocol_version,
                 connect_packet.will,
                 session_expiry_duration,
                 client_msg_sender,
-            ),
-        );
+            )
+        };
+
+        self.sessions.insert(connect_packet.client_id, new_session);
     }
 
     fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
+        let subscriptions = &mut self.subscriptions;
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            let subscriptions = &mut self.subscriptions;
+            // If a Server receives a SUBSCRIBE packet containing a Topic Filter that
+            // is identical to a Non‑shared Subscription’s Topic Filter for the current
+            // Session, then it MUST replace that existing Subscription with a new Subscription.
+            for topic in &packet.subscription_topics {
+                let topic = &topic.topic_filter;
+                // Unsubscribe the old session from all topics it subscribed to.
+                session.subscription_tokens.retain(|(session_topic, token)| {
+                    if *session_topic == *topic {
+                        subscriptions.remove(&session_topic, *token);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
 
             // Iterate through each subscription, insert into the subscription tree,
             // and return the QoS that was granted.

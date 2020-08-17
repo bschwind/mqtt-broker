@@ -318,7 +318,7 @@ pub mod properties {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq)]
     pub struct SessionExpiryInterval(pub u32);
     impl PacketSize for SessionExpiryInterval {
         fn calc_size(&self, _protocol_version: ProtocolVersion) -> u32 {
