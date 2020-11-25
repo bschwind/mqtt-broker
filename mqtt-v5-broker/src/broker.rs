@@ -7,7 +7,7 @@ use mqtt_v5::{
         ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
         PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
         PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason,
-        SubscribePacket,
+        SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason, UnsubscribePacket,
     },
 };
 use std::{
@@ -175,6 +175,7 @@ pub enum BrokerMessage {
     PublishComplete(String, PublishCompletePacket),
     PublishFinalWill(String, FinalWill),
     Subscribe(String, SubscribePacket), // TODO - replace string client_id with int
+    Unsubscribe(String, UnsubscribePacket), // TODO - replace string client_id with int
     Disconnect(String, WillDisconnectLogic),
 }
 
@@ -379,6 +380,51 @@ impl Broker {
             let _ = session
                 .client_sender
                 .try_send(ClientMessage::Packet(Packet::SubscribeAck(subscribe_ack)));
+        }
+    }
+
+    fn handle_unsubscribe(&mut self, client_id: String, packet: UnsubscribePacket) {
+        let subscriptions = &mut self.subscriptions;
+
+        if let Some(session) = self.sessions.get_mut(&client_id) {
+            for filter in &packet.topic_filters {
+                // Unsubscribe the old session from all topics it subscribed to.
+                session.subscription_tokens.retain(|(session_topic, token)| {
+                    if *session_topic == *filter {
+                        subscriptions.remove(&session_topic, *token);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+
+            let reason_codes = packet
+                .topic_filters
+                .into_iter()
+                .map(|filter| {
+                    if let Some(pos) =
+                        session.subscription_tokens.iter().position(|(topic, _)| filter == *topic)
+                    {
+                        let (topic, token) = session.subscription_tokens.remove(pos);
+                        subscriptions.remove(&topic, token);
+                        UnsubscribeAckReason::Success
+                    } else {
+                        UnsubscribeAckReason::NoSubscriptionExisted
+                    }
+                })
+                .collect();
+
+            let unsubscribe_ack = UnsubscribeAckPacket {
+                packet_id: packet.packet_id,
+                reason_string: None,
+                user_properties: vec![],
+                reason_codes,
+            };
+
+            let _ = session
+                .client_sender
+                .try_send(ClientMessage::Packet(Packet::UnsubscribeAck(unsubscribe_ack)));
         }
     }
 
@@ -608,6 +654,9 @@ impl Broker {
                 },
                 BrokerMessage::Subscribe(client_id, packet) => {
                     self.handle_subscribe(client_id, packet);
+                },
+                BrokerMessage::Unsubscribe(client_id, packet) => {
+                    self.handle_unsubscribe(client_id, packet);
                 },
                 BrokerMessage::Disconnect(client_id, will_disconnect_logic) => {
                     self.handle_disconnect(client_id, will_disconnect_logic);

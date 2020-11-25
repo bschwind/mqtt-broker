@@ -173,6 +173,12 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                                 .await
                                 .expect("Couldn't send Subscribe message to broker");
                         },
+                        Packet::Unsubscribe(packet) => {
+                            broker_tx
+                                .send(BrokerMessage::Unsubscribe(client_id.clone(), packet))
+                                .await
+                                .expect("Couldn't send Unsubscribe message to broker");
+                        },
                         Packet::Publish(packet) => {
                             match packet.qos {
                                 QoS::AtMostOnce => {},
