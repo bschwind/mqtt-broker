@@ -137,8 +137,8 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         mut stream: ST,
         client_id: String,
         keepalive_seconds: Option<u16>,
-        mut broker_tx: Sender<BrokerMessage>,
-        mut self_tx: Sender<ClientMessage>,
+        broker_tx: Sender<BrokerMessage>,
+        self_tx: Sender<ClientMessage>,
     ) {
         // The keepalive should be 1.5 times the specified keepalive value in the connect packet.
         let keepalive_duration = keepalive_seconds

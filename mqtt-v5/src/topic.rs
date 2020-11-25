@@ -126,9 +126,7 @@ impl FromStr for TopicFilter {
 
         let mut shared_group = None;
 
-        if filter.starts_with(SHARED_SUBSCRIPTION_PREFIX) {
-            let filter_rest = &filter[SHARED_SUBSCRIPTION_PREFIX.len()..];
-
+        if let Some(filter_rest) = filter.strip_prefix(SHARED_SUBSCRIPTION_PREFIX) {
             if filter_rest.is_empty() {
                 return Err(TopicParseError::EmptySharedGroupName);
             }

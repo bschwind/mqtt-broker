@@ -202,7 +202,7 @@ impl Broker {
         client_id: &str,
         new_client_clean_start: bool,
     ) -> Option<Session> {
-        let existing_session = self.sessions.remove(client_id).map(|mut existing_session| {
+        let existing_session = self.sessions.remove(client_id).map(|existing_session| {
             if existing_session.connected {
                 if let Err(e) = existing_session
                     .client_sender
@@ -247,7 +247,7 @@ impl Broker {
     fn handle_new_client(
         &mut self,
         connect_packet: ConnectPacket,
-        mut client_msg_sender: Sender<ClientMessage>,
+        client_msg_sender: Sender<ClientMessage>,
     ) {
         let mut takeover_session =
             self.take_over_existing_client(&connect_packet.client_id, connect_packet.clean_start);
@@ -471,10 +471,10 @@ impl Broker {
                                 will.will_delay_duration()
                                     .unwrap_or_else(|| Duration::from_secs(0)),
                             );
-                        let mut broker_sender = self.sender.clone();
+                        let broker_sender = self.sender.clone();
 
                         tokio::spawn(async move {
-                            let _ = tokio::time::delay_for(will_send_delay_duration).await;
+                            let _ = tokio::time::sleep(will_send_delay_duration).await;
                             let _ = broker_sender
                                 .send(BrokerMessage::PublishFinalWill(client_id, will))
                                 .await;
@@ -696,7 +696,7 @@ mod tests {
         sync::mpsc::{self, Sender},
     };
 
-    async fn run_client(mut broker_tx: Sender<BrokerMessage>) {
+    async fn run_client(broker_tx: Sender<BrokerMessage>) {
         let (sender, mut receiver) = mpsc::channel(5);
 
         let connect_packet = ConnectPacket {
@@ -791,7 +791,7 @@ mod tests {
         let broker = Broker::new();
         let sender = broker.sender();
 
-        let mut runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new().unwrap();
 
         runtime.spawn(broker.run());
         runtime.block_on(run_client(sender));
