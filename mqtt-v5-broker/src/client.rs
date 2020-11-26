@@ -191,7 +191,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                             }
 
                             broker_tx
-                                .send(BrokerMessage::Publish(client_id.clone(), packet))
+                                .send(BrokerMessage::Publish(client_id.clone(), Box::new(packet)))
                                 .await
                                 .expect("Couldn't send Publish message to broker");
                         },

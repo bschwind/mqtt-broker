@@ -168,7 +168,7 @@ pub enum WillDisconnectLogic {
 #[derive(Debug)]
 pub enum BrokerMessage {
     NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
-    Publish(String, PublishPacket),
+    Publish(String, Box<PublishPacket>),
     PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
     PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
     PublishReceived(String, PublishReceivedPacket),
@@ -662,7 +662,7 @@ impl Broker {
                     self.handle_disconnect(client_id, will_disconnect_logic);
                 },
                 BrokerMessage::Publish(client_id, packet) => {
-                    self.handle_publish(client_id, packet);
+                    self.handle_publish(client_id, *packet);
                 },
                 BrokerMessage::PublishAck(client_id, packet) => {
                     self.handle_publish_ack(client_id, packet);
