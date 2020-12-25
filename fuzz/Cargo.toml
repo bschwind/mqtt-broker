@@ -9,7 +9,7 @@ edition = "2018"
 cargo-fuzz = true
 
 [dependencies]
-bytes = "0.5.0"
+bytes = "1"
 libfuzzer-sys = "0.3"
 
 [dependencies.mqtt-v5]
