@@ -197,6 +197,8 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
         return_val.map(|(_, val)| val)
     }
 
+    // TODO - Try turning this into an iterator:
+    //        https://aloso.github.io/2021/03/09/creating-an-iterator
     fn matching_subscribers<F: FnMut(&T)>(&self, topic: &Topic, mut sub_fn: F) {
         let mut tree_stack = vec![];
         let levels: Vec<TopicLevel> = topic.levels().collect();
