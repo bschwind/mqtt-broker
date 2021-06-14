@@ -1176,7 +1176,7 @@ mod tests {
                     Some(get_variable_int) => assert_eq!(get_variable_int, expected_variable_int),
                     None => panic!("variable_int is None"),
                 },
-                Err(err) => panic!(err),
+                Err(err) => panic!("Error decoding variable int: {:?}", err),
             }
         }
 
