@@ -30,7 +30,7 @@ impl<T: std::fmt::Debug> SubscriptionTree<T> {
         counter
     }
 
-    pub fn matching_subscribers<'a, F: FnMut(&T)>(&'a self, topic: &Topic, sub_fn: F) {
+    pub fn matching_subscribers<F: FnMut(&T)>(&self, topic: &Topic, sub_fn: F) {
         self.root.matching_subscribers(topic, sub_fn)
     }
 
@@ -257,14 +257,14 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
 #[cfg(test)]
 mod tests {
     use crate::tree::SubscriptionTree;
-    use std::{collections::HashSet, fmt::Debug, hash::Hash, iter::FromIterator};
+    use std::{collections::HashSet, fmt::Debug, hash::Hash};
 
     fn assert_subscribers<T: Debug + Hash + Eq + Clone>(
         tree: &SubscriptionTree<T>,
         topic: &str,
         subscribers: &[T],
     ) {
-        let expected_set = HashSet::from_iter(subscribers.iter().cloned());
+        let expected_set = subscribers.iter().cloned().collect::<HashSet<_>>();
         let mut actual_set = HashSet::new();
 
         tree.matching_subscribers(&topic.parse().unwrap(), |s| {
