@@ -36,6 +36,15 @@ pub enum TopicLevel<'a> {
     MultiLevelWildcard,
 }
 
+impl<'a> TopicLevel<'a> {
+    pub fn has_leading_dollar(&self) -> bool {
+        match self {
+            TopicLevel::Concrete(level_str) => level_str.starts_with('$'),
+            TopicLevel::SingleLevelWildcard | TopicLevel::MultiLevelWildcard => false,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TopicParseError {
     EmptyTopic,
@@ -117,9 +126,7 @@ impl FromStr for TopicFilter {
 
         let mut shared_group = None;
 
-        if filter.starts_with(SHARED_SUBSCRIPTION_PREFIX) {
-            let filter_rest = &filter[SHARED_SUBSCRIPTION_PREFIX.len()..];
-
+        if let Some(filter_rest) = filter.strip_prefix(SHARED_SUBSCRIPTION_PREFIX) {
             if filter_rest.is_empty() {
                 return Err(TopicParseError::EmptySharedGroupName);
             }

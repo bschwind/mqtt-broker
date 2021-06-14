@@ -9,9 +9,9 @@ authors = ["Brian Schwind <brianmschwind@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-bytes = "0.5.0"
-tokio = { version = "0.2", features = ["tcp", "dns", "rt-threaded", "sync", "time", "macros"] }
-tokio-util = { version = "0.3", features = ["codec"] }
-mqtt-v5 = { path = "../mqtt-v5", version = "0.1" }
+bytes = "1"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "sync", "time", "macros"] }
+tokio-util = { version = "0.6", features = ["codec"] }
+mqtt-v5 = { path = "../mqtt-v5", version = "0.2" }
 nanoid = "0.3"
 futures = "0.3"

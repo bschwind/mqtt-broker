@@ -163,7 +163,7 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
 
 async fn server_loop(broker_tx: Sender<BrokerMessage>) {
     let bind_addr = "0.0.0.0:1883";
-    let mut listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 1883");
+    let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 1883");
 
     println!("Listening on {}", bind_addr);
 
@@ -180,7 +180,7 @@ async fn server_loop(broker_tx: Sender<BrokerMessage>) {
 
 async fn websocket_server_loop(broker_tx: Sender<BrokerMessage>) {
     let bind_addr = "0.0.0.0:8080";
-    let mut listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 8080");
+    let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 8080");
 
     println!("Listening on {}", bind_addr);
 
@@ -200,7 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // * Spawn a background thread running a Reactor instance.
     // * Start a ThreadPool for executing futures.
     // * Run an instance of Timer per thread pool worker thread.
-    let mut runtime = Runtime::new()?;
+    let runtime = Runtime::new()?;
 
     let broker = Broker::new();
     let broker_tx = broker.sender();
