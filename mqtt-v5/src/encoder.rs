@@ -271,11 +271,11 @@ fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut, protocol_version
     }
 
     if let Some(user_name) = &packet.user_name {
-        encode_string(&user_name, bytes);
+        encode_string(user_name, bytes);
     }
 
     if let Some(password) = &packet.password {
-        encode_string(&password, bytes);
+        encode_string(password, bytes);
     }
 }
 

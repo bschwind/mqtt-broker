@@ -340,7 +340,7 @@ impl Broker {
                 // Unsubscribe the old session from all topics it subscribed to.
                 session.subscription_tokens.retain(|(session_topic, token)| {
                     if *session_topic == *topic {
-                        subscriptions.remove(&session_topic, *token);
+                        subscriptions.remove(session_topic, *token);
                         false
                     } else {
                         true
@@ -391,7 +391,7 @@ impl Broker {
                 // Unsubscribe the old session from all topics it subscribed to.
                 session.subscription_tokens.retain(|(session_topic, token)| {
                     if *session_topic == *filter {
-                        subscriptions.remove(&session_topic, *token);
+                        subscriptions.remove(session_topic, *token);
                         false
                     } else {
                         true

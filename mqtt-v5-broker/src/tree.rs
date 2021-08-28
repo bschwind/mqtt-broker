@@ -68,35 +68,27 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
         for level in topic_filter.levels() {
             match level {
                 TopicLevel::SingleLevelWildcard => {
-                    if current_tree.single_level_wildcards.is_some() {
-                        current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
-                    } else {
+                    if current_tree.single_level_wildcards.is_none() {
                         current_tree.single_level_wildcards =
                             Some(Box::new(SubscriptionTreeNode::new()));
-                        current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                     }
+
+                    current_tree = current_tree.single_level_wildcards.as_mut().unwrap();
                 },
                 TopicLevel::MultiLevelWildcard => {
                     multi_level = true;
                     break;
                 },
                 TopicLevel::Concrete(concrete_topic_level) => {
-                    if current_tree.concrete_topic_levels.contains_key(concrete_topic_level) {
-                        current_tree = current_tree
-                            .concrete_topic_levels
-                            .get_mut(concrete_topic_level)
-                            .unwrap();
-                    } else {
+                    if !current_tree.concrete_topic_levels.contains_key(concrete_topic_level) {
                         current_tree
                             .concrete_topic_levels
                             .insert(concrete_topic_level.to_string(), SubscriptionTreeNode::new());
-
-                        // TODO - Do this without another hash lookup
-                        current_tree = current_tree
-                            .concrete_topic_levels
-                            .get_mut(concrete_topic_level)
-                            .unwrap();
                     }
+
+                    // TODO - Do this without another hash lookup
+                    current_tree =
+                        current_tree.concrete_topic_levels.get_mut(concrete_topic_level).unwrap();
                 },
             }
         }
