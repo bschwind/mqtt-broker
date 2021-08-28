@@ -305,6 +305,13 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         );
         let task_tx = Self::handle_socket_writes(self.packet_sink, self.broker_rx);
 
+        // Note:
+        // https://docs.rs/tokio/1.7.0/tokio/macro.select.html#runtime-characteristics
+        // By running all async expressions on the current task, the expressions are
+        // able to run concurrently but not in parallel. This means all expressions
+        // are run on the same thread and if one branch blocks the thread, all other
+        // expressions will be unable to continue. If parallelism is required, spawn
+        // each async expression using tokio::spawn and pass the join handle to select!.
         tokio::select! {
             _ = task_rx => println!("rx"),
             _ = task_tx => println!("tx"),
