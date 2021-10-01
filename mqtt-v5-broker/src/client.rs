@@ -1,5 +1,8 @@
 use crate::broker::{BrokerMessage, WillDisconnectLogic};
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::{
+    future::{self, Either},
+    stream, Sink, SinkExt, Stream, StreamExt,
+};
 use mqtt_v5::types::{
     DecodeError, DisconnectPacket, DisconnectReason, EncodeError, Packet, ProtocolError,
     ProtocolVersion, QoS,
@@ -12,6 +15,9 @@ use tokio::{
 };
 
 type PacketResult = Result<Packet, DecodeError>;
+
+/// Timeout when writing to a client sink
+const SINK_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>>
 {
@@ -265,15 +271,9 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         tokio::pin!(sink);
 
         while let Some(frame) = broker_rx.recv().await {
-            match frame {
-                ClientMessage::Packets(packets) => {
-                    sink.send_all(&mut futures::stream::iter(packets).map(Ok))
-                        .await
-                        .expect("Couldn't forward packets to framed socket");
-                },
-                ClientMessage::Packet(packet) => {
-                    sink.send(packet).await.expect("Couldn't forward packet to framed socket");
-                },
+            let mut packets = match frame {
+                ClientMessage::Packets(packets) => Either::Left(stream::iter(packets)),
+                ClientMessage::Packet(packet) => Either::Right(stream::once(future::ready(packet))),
                 ClientMessage::Disconnect(reason_code) => {
                     let disconnect_packet = DisconnectPacket {
                         reason_code,
@@ -283,14 +283,30 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         server_reference: None,
                     };
 
-                    sink.send(Packet::Disconnect(disconnect_packet))
-                        .await
-                        .expect("Couldn't forward disconnect packet to framed socket");
+                    if let Err(e) = sink.send(Packet::Disconnect(disconnect_packet)).await {
+                        println!("Failed to send disconnect packet to framed socket: {:?}", e);
+                    }
 
                     println!("broker told the client to disconnect");
 
-                    break;
+                    return;
                 },
+            };
+
+            // Process each packet in a dedicated timeout to be fair
+            while let Some(packet) = packets.next().await {
+                let send = sink.send(packet);
+                match tokio::time::timeout(SINK_SEND_TIMEOUT, send).await {
+                    Ok(Ok(())) => (),
+                    Ok(Err(e)) => {
+                        println!("Failed to write to client client socket: {:?}", e);
+                        return;
+                    },
+                    Err(_) => {
+                        println!("Timeout during client socket write. Disconnecting");
+                        return;
+                    },
+                }
             }
         }
     }
@@ -298,7 +314,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
     pub async fn run(self) {
         let task_rx = Self::handle_socket_reads(
             self.packet_stream,
-            self.id,
+            self.id.clone(),
             self.keepalive_seconds,
             self.broker_tx,
             self.self_tx,
@@ -312,10 +328,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         // are run on the same thread and if one branch blocks the thread, all other
         // expressions will be unable to continue. If parallelism is required, spawn
         // each async expression using tokio::spawn and pass the join handle to select!.
-        tokio::select! {
-            _ = task_rx => println!("rx"),
-            _ = task_tx => println!("tx"),
-            else => println!("done"),
-        }
+        future::join(task_rx, task_tx).await;
+        println!("Client ID {} task exit", self.id);
     }
 }

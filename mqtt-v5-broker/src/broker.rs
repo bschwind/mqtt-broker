@@ -1,5 +1,4 @@
 use crate::{client::ClientMessage, tree::SubscriptionTree};
-use futures::FutureExt;
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
@@ -487,14 +486,13 @@ impl Broker {
                         let broker_sender = self.sender.clone();
 
                         // Spawn a task that publishes the will after `will_send_delay_duration`
-                        let delayed_will =
-                            tokio::time::sleep(will_send_delay_duration).then(|_| async move {
-                                broker_sender
-                                    .send(BrokerMessage::PublishFinalWill(client_id, will))
-                                    .await
-                                    .expect("Failed to send final will message to broker");
-                            });
-                        tokio::spawn(delayed_will);
+                        tokio::spawn(async move {
+                            tokio::time::sleep(will_send_delay_duration).await;
+                            broker_sender
+                                .send(BrokerMessage::PublishFinalWill(client_id, will))
+                                .await
+                                .expect("Failed to send final will message to broker");
+                        });
                     },
                     WillDisconnectLogic::DoNotSend => {},
                 }
