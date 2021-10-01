@@ -30,8 +30,8 @@ impl<T: std::fmt::Debug> SubscriptionTree<T> {
         counter
     }
 
-    pub fn matching_subscribers<F: FnMut(&T)>(&self, topic: &Topic, sub_fn: F) {
-        self.root.matching_subscribers(topic, sub_fn)
+    pub fn matching_subscribers(&self, topic: &Topic) -> impl Iterator<Item = &T> {
+        self.root.matching_subscribers(topic)
     }
 
     pub fn remove(&mut self, topic_filter: &TopicFilter, counter: u64) -> Option<T> {
@@ -189,24 +189,21 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
         return_val.map(|(_, val)| val)
     }
 
-    // TODO - Try turning this into an iterator:
-    //        https://aloso.github.io/2021/03/09/creating-an-iterator
-    fn matching_subscribers<F: FnMut(&T)>(&self, topic: &Topic, mut sub_fn: F) {
-        let mut tree_stack = vec![];
+    fn matching_subscribers(&self, topic: &Topic) -> impl Iterator<Item = &T> {
+        let mut subscriptions = Vec::new();
+        let mut tree_stack = vec![(self, 0)];
         let levels: Vec<TopicLevel> = topic.levels().collect();
-
-        tree_stack.push((self, 0));
 
         while !tree_stack.is_empty() {
             let (current_tree, current_level) = tree_stack.pop().unwrap();
             let level = &levels[current_level];
 
-            for (_, subscriber) in &current_tree.multi_level_wildcards {
-                // Don't allow wildcard subscribers to receive messages
-                // with leading dollar signs, like '$SYS/stats'
-                if current_level != 0 || !level.has_leading_dollar() {
-                    sub_fn(subscriber);
-                }
+            // Don't allow wildcard subscribers to receive messages
+            // with leading dollar signs, like '$SYS/stats'
+            if current_level != 0 || !level.has_leading_dollar() {
+                subscriptions.extend(
+                    current_tree.multi_level_wildcards.iter().map(|(_, subscriber)| subscriber),
+                );
             }
 
             if let Some(sub_tree) = &current_tree.single_level_wildcards {
@@ -216,9 +213,8 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                     if current_level + 1 < levels.len() {
                         tree_stack.push((sub_tree, current_level + 1));
                     } else {
-                        for (_, subscriber) in &sub_tree.subscribers {
-                            sub_fn(subscriber);
-                        }
+                        subscriptions
+                            .extend(sub_tree.subscribers.iter().map(|(_, subscriber)| subscriber));
                     }
                 }
             }
@@ -231,18 +227,18 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                         let sub_tree = current_tree.concrete_topic_levels.get(*level).unwrap();
                         tree_stack.push((sub_tree, current_level + 1));
                     } else {
-                        for (_, subscriber) in &sub_tree.subscribers {
-                            sub_fn(subscriber);
-                        }
+                        subscriptions
+                            .extend(sub_tree.subscribers.iter().map(|(_, subscriber)| subscriber));
 
                         // TODO(bschwind) - Verify this works properly with better tests.
-                        for (_, subscriber) in &sub_tree.multi_level_wildcards {
-                            sub_fn(subscriber);
-                        }
+                        subscriptions.extend(
+                            sub_tree.multi_level_wildcards.iter().map(|(_, subscriber)| subscriber),
+                        );
                     }
                 }
             }
         }
+        subscriptions.into_iter()
     }
 }
 
@@ -259,9 +255,9 @@ mod tests {
         let expected_set = subscribers.iter().cloned().collect::<HashSet<_>>();
         let mut actual_set = HashSet::new();
 
-        tree.matching_subscribers(&topic.parse().unwrap(), |s| {
-            actual_set.insert(s.clone());
-        });
+        for subscriber in tree.matching_subscribers(&topic.parse().unwrap()) {
+            actual_set.insert(subscriber.clone());
+        }
 
         assert_eq!(expected_set, actual_set);
     }
