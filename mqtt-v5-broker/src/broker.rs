@@ -20,7 +20,7 @@ pub struct Session {
     pub protocol_version: ProtocolVersion,
     // pub subscriptions: HashSet<SubscriptionTopic>,
     // pub shared_subscriptions: HashSet<SubscriptionTopic>,
-    pub client_sender: Sender<ClientMessage>,
+    pub client_sender: Option<Sender<ClientMessage>>,
 
     // Used to unsubscribe from topics
     subscription_tokens: Vec<(TopicFilter, u64)>,
@@ -38,9 +38,6 @@ pub struct Session {
 
     packet_counter: u16,
 
-    // Indicates if a network connection is currently attached to this session.
-    connected: bool,
-
     session_expiry_interval: Option<Duration>,
 
     will: Option<FinalWill>,
@@ -57,13 +54,13 @@ impl Session {
             protocol_version,
             // subscriptions: HashSet::new(),
             // shared_subscriptions: HashSet::new(),
-            client_sender,
+            /// Tx handle for a connected client
+            client_sender: Some(client_sender),
             subscription_tokens: Vec::new(),
             outgoing_packets: Vec::new(),
             outgoing_publish_receives: Vec::new(),
             outgoing_publish_released: Vec::new(),
             packet_counter: 1,
-            connected: true,
             session_expiry_interval,
             will,
         }
@@ -80,8 +77,7 @@ impl Session {
     ) -> Self {
         Self {
             protocol_version,
-            client_sender,
-            connected: true,
+            client_sender: Some(client_sender),
             session_expiry_interval,
             will,
             ..self
@@ -119,9 +115,9 @@ impl Session {
         }
     }
 
-    fn resend_packets(&mut self) {
+    async fn resend_packets(&mut self) {
         if !self.outgoing_packets.is_empty() {
-            let _ = self.client_sender.try_send(ClientMessage::Packets(
+            let message = ClientMessage::Packets(
                 self.outgoing_packets
                     .iter()
                     .cloned()
@@ -131,11 +127,12 @@ impl Session {
                         Packet::Publish(p)
                     })
                     .collect(),
-            ));
+            );
+            self.send(message).await;
         }
 
         if !self.outgoing_publish_released.is_empty() {
-            let _ = self.client_sender.try_send(ClientMessage::Packets(
+            let message = ClientMessage::Packets(
                 self.outgoing_publish_released
                     .iter()
                     .cloned()
@@ -148,7 +145,19 @@ impl Session {
                         })
                     })
                     .collect(),
-            ));
+            );
+            self.send(message).await;
+        }
+    }
+
+    /// Attempt to send a `ClientMessage` to the client via the channel handle.
+    /// If the channel is closed, the handle is removed from the session.
+    async fn send(&mut self, message: ClientMessage) {
+        if let Some(ref client_sender) = self.client_sender {
+            if client_sender.send(message).await.is_err() {
+                println!("Failed to send message to client. Dropping sender");
+                self.client_sender.take();
+            }
         }
     }
 }
@@ -197,15 +206,14 @@ impl Broker {
         self.sender.clone()
     }
 
-    fn take_over_existing_client(
+    async fn take_over_existing_client(
         &mut self,
         client_id: &str,
         new_client_clean_start: bool,
     ) -> Option<Session> {
-        let existing_session = self.sessions.remove(client_id).map(|existing_session| {
-            if existing_session.connected {
-                if let Err(e) = existing_session
-                    .client_sender
+        let existing_session = if let Some(existing_session) = self.sessions.remove(client_id) {
+            if let Some(client_sender) = &existing_session.client_sender {
+                if let Err(e) = client_sender
                     .try_send(ClientMessage::Disconnect(DisconnectReason::SessionTakenOver))
                 {
                     println!("Failed to send disconnect packet to taken-over session - {:?}", e);
@@ -226,12 +234,14 @@ impl Broker {
                     || new_client_clean_start;
 
                 if should_send_will {
-                    self.publish_message(will.clone().into());
+                    self.publish_message(will.clone().into()).await;
                 }
             }
 
-            existing_session
-        });
+            Some(existing_session)
+        } else {
+            None
+        };
 
         // If the Server accepts a connection with Clean Start set to 1, the Server MUST set Session Present to 0 in the
         // CONNACK packet in addition to setting a 0x00 (Success) Reason Code in the CONNACK packet [MQTT-3.2.2-2].
@@ -244,17 +254,19 @@ impl Broker {
         existing_session
     }
 
-    fn handle_new_client(
+    async fn handle_new_client(
         &mut self,
         connect_packet: ConnectPacket,
         client_msg_sender: Sender<ClientMessage>,
     ) {
-        let mut takeover_session =
-            self.take_over_existing_client(&connect_packet.client_id, connect_packet.clean_start);
+        let mut takeover_session = self
+            .take_over_existing_client(&connect_packet.client_id, connect_packet.clean_start)
+            .await;
         let session_present = takeover_session.is_some();
 
+        // TODO(flxo) Calling `resend_packets` after `take_over_existing_client` feels strange since a disconnect is sent in there.
         if let Some(existing_session) = &mut takeover_session {
-            existing_session.resend_packets();
+            existing_session.resend_packets().await;
         }
 
         println!(
@@ -300,7 +312,11 @@ impl Broker {
             authentication_data: None,
         };
 
-        let _ = client_msg_sender.try_send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)));
+        // A newly connected client should have empty channel and the queuing the connect ack *must* fit in the channel.
+        client_msg_sender
+            .send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)))
+            .await
+            .expect("Failed to send Connect Acknowledgement");
 
         let session_expiry_duration =
             session_expiry_interval.map(|i| Duration::from_secs(i.0 as u64));
@@ -313,7 +329,7 @@ impl Broker {
                 client_msg_sender,
             );
 
-            new_session.resend_packets();
+            new_session.resend_packets().await;
 
             new_session
         } else {
@@ -328,7 +344,7 @@ impl Broker {
         self.sessions.insert(connect_packet.client_id, new_session);
     }
 
-    fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
+    async fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
         let subscriptions = &mut self.subscriptions;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
@@ -377,13 +393,11 @@ impl Broker {
                 reason_codes: granted_qos_values,
             };
 
-            let _ = session
-                .client_sender
-                .try_send(ClientMessage::Packet(Packet::SubscribeAck(subscribe_ack)));
+            session.send(ClientMessage::Packet(Packet::SubscribeAck(subscribe_ack))).await;
         }
     }
 
-    fn handle_unsubscribe(&mut self, client_id: String, packet: UnsubscribePacket) {
+    async fn handle_unsubscribe(&mut self, client_id: String, packet: UnsubscribePacket) {
         let subscriptions = &mut self.subscriptions;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
@@ -422,9 +436,7 @@ impl Broker {
                 reason_codes,
             };
 
-            let _ = session
-                .client_sender
-                .try_send(ClientMessage::Packet(Packet::UnsubscribeAck(unsubscribe_ack)));
+            session.send(ClientMessage::Packet(Packet::UnsubscribeAck(unsubscribe_ack))).await;
         }
     }
 
@@ -435,7 +447,7 @@ impl Broker {
         let mut session_expiry_duration = None;
 
         if let Entry::Occupied(mut session_entry) = self.sessions.entry(client_id.clone()) {
-            session_entry.get_mut().connected = false;
+            session_entry.get_mut().client_sender.take();
 
             if let Some(expiry_interval) = session_entry.get().session_expiry_interval {
                 // The Will Message MUST be published after the Network Connection is subsequently
@@ -473,11 +485,13 @@ impl Broker {
                             );
                         let broker_sender = self.sender.clone();
 
+                        // Spawn a task that publishes the will after `will_send_delay_duration`
                         tokio::spawn(async move {
-                            let _ = tokio::time::sleep(will_send_delay_duration).await;
-                            let _ = broker_sender
+                            tokio::time::sleep(will_send_delay_duration).await;
+                            broker_sender
                                 .send(BrokerMessage::PublishFinalWill(client_id, will))
-                                .await;
+                                .await
+                                .expect("Failed to send final will message to broker");
                         });
                     },
                     WillDisconnectLogic::DoNotSend => {},
@@ -486,11 +500,11 @@ impl Broker {
         }
     }
 
-    fn publish_message(&mut self, packet: PublishPacket) {
+    async fn publish_message(&mut self, packet: PublishPacket) {
         let topic = &packet.topic;
         let sessions = &mut self.sessions;
 
-        self.subscriptions.matching_subscribers(topic, |session_subscription| {
+        for session_subscription in self.subscriptions.matching_subscribers(topic) {
             if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
                 let outgoing_packet_id = match session_subscription.maximum_qos {
                     QoS::AtLeastOnce | QoS::ExactlyOnce => {
@@ -509,14 +523,12 @@ impl Broker {
                     ..packet.clone()
                 };
 
-                let _ = session
-                    .client_sender
-                    .try_send(ClientMessage::Packet(Packet::Publish(outgoing_packet)));
+                session.send(ClientMessage::Packet(Packet::Publish(outgoing_packet))).await;
             }
-        });
+        }
     }
 
-    fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
+    async fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
         let mut is_dup = false;
 
         // For QoS2, ensure this packet isn't delivered twice. So if we have an outgoing
@@ -535,9 +547,7 @@ impl Broker {
                         user_properties: vec![],
                     };
 
-                    let _ = session
-                        .client_sender
-                        .try_send(ClientMessage::Packet(Packet::PublishAck(publish_ack)));
+                    session.send(ClientMessage::Packet(Packet::PublishAck(publish_ack))).await;
                 }
             },
             QoS::ExactlyOnce => {
@@ -558,15 +568,15 @@ impl Broker {
                         user_properties: vec![],
                     };
 
-                    let _ = session
-                        .client_sender
-                        .try_send(ClientMessage::Packet(Packet::PublishReceived(publish_recv)));
+                    session
+                        .send(ClientMessage::Packet(Packet::PublishReceived(publish_recv)))
+                        .await;
                 }
             },
         }
 
         if !is_dup {
-            self.publish_message(packet);
+            self.publish_message(packet).await;
         }
     }
 
@@ -576,7 +586,7 @@ impl Broker {
         }
     }
 
-    fn handle_publish_release(&mut self, client_id: String, packet: PublishReleasePacket) {
+    async fn handle_publish_release(&mut self, client_id: String, packet: PublishReleasePacket) {
         if let Some(session) = self.sessions.get_mut(&client_id) {
             if let Some(pos) =
                 session.outgoing_publish_receives.iter().position(|x| *x == packet.packet_id)
@@ -590,14 +600,12 @@ impl Broker {
                     user_properties: vec![],
                 };
 
-                let _ = session
-                    .client_sender
-                    .try_send(ClientMessage::Packet(Packet::PublishComplete(outgoing_packet)));
+                session.send(ClientMessage::Packet(Packet::PublishComplete(outgoing_packet))).await;
             }
         }
     }
 
-    fn handle_publish_received(&mut self, client_id: String, packet: PublishReceivedPacket) {
+    async fn handle_publish_received(&mut self, client_id: String, packet: PublishReceivedPacket) {
         if let Some(session) = self.sessions.get_mut(&client_id) {
             if let Some(pos) = session.outgoing_packets.iter().position(|p| {
                 p.qos == QoS::ExactlyOnce
@@ -615,9 +623,7 @@ impl Broker {
                     user_properties: vec![],
                 };
 
-                let _ = session
-                    .client_sender
-                    .try_send(ClientMessage::Packet(Packet::PublishRelease(outgoing_packet)));
+                session.send(ClientMessage::Packet(Packet::PublishRelease(outgoing_packet))).await;
             }
         }
     }
@@ -632,17 +638,17 @@ impl Broker {
         }
     }
 
-    fn publish_final_will(&mut self, client_id: String, final_will: FinalWill) {
+    async fn publish_final_will(&mut self, client_id: String, final_will: FinalWill) {
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if session.connected {
+            if session.client_sender.is_some() {
                 // They've reconnected, don't send out the will message.
-                self.publish_message(final_will.into());
+                self.publish_message(final_will.into()).await;
             } else {
                 // They haven't reconnected, send out the will message.
             }
         } else {
             // No existing session, send out the will message.
-            self.publish_message(final_will.into());
+            self.publish_message(final_will.into()).await;
         }
     }
 
@@ -650,34 +656,34 @@ impl Broker {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
                 BrokerMessage::NewClient(connect_packet, client_msg_sender) => {
-                    self.handle_new_client(*connect_packet, client_msg_sender);
+                    self.handle_new_client(*connect_packet, client_msg_sender).await;
                 },
                 BrokerMessage::Subscribe(client_id, packet) => {
-                    self.handle_subscribe(client_id, packet);
+                    self.handle_subscribe(client_id, packet).await;
                 },
                 BrokerMessage::Unsubscribe(client_id, packet) => {
-                    self.handle_unsubscribe(client_id, packet);
+                    self.handle_unsubscribe(client_id, packet).await;
                 },
                 BrokerMessage::Disconnect(client_id, will_disconnect_logic) => {
                     self.handle_disconnect(client_id, will_disconnect_logic);
                 },
                 BrokerMessage::Publish(client_id, packet) => {
-                    self.handle_publish(client_id, *packet);
+                    self.handle_publish(client_id, *packet).await;
                 },
                 BrokerMessage::PublishAck(client_id, packet) => {
                     self.handle_publish_ack(client_id, packet);
                 },
                 BrokerMessage::PublishRelease(client_id, packet) => {
-                    self.handle_publish_release(client_id, packet);
+                    self.handle_publish_release(client_id, packet).await;
                 },
                 BrokerMessage::PublishReceived(client_id, packet) => {
-                    self.handle_publish_received(client_id, packet);
+                    self.handle_publish_received(client_id, packet).await;
                 },
                 BrokerMessage::PublishComplete(client_id, packet) => {
                     self.handle_publish_complete(client_id, packet);
                 },
                 BrokerMessage::PublishFinalWill(client_id, final_will) => {
-                    self.publish_final_will(client_id, final_will);
+                    self.publish_final_will(client_id, final_will).await;
                 },
             }
         }
