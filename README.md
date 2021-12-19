@@ -1,31 +1,52 @@
-mqtt-broker
-===========
+# mqtt-broker
 
 A tokio-based MQTT v5 broker written in Rust.
 
-# Dependencies
+## Project Goals
+
+The goals for this project are fairly straightforward:
+
+* Adhere to the MQTT V5 [Spec](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html)
+* Be easily deployable as a single binary
+* Have reasonable performance and memory usage on a single node
+
+I originally started this project as a simple, open-source broker for any IoT products I might make. If I were to sell such products, I would want to allow users to run their own broker in case I can no longer run one, and it should be as easy as possible to do so.
+
+Extra features like a broker cluster or extra transport layers are _nice to have_ features, but won't be considered until the core V5 spec is implemented. The exception to this is the WebSocket transport, which is specifically mentioned in the spec and quite useful to have.
+
+## Comparison to Other Brokers
+
+Wikipedia has a fairly [comprehensive list](https://en.wikipedia.org/wiki/Comparison_of_MQTT_implementations) of brokers to choose from.
+
+[rumqtt](https://github.com/bytebeamio/rumqtt) at the moment appears to be the most fully-featured broker. Take a look there first if you're looking for a more "ready-to-go" Rust broker.
+
+## Spec Compliance
+
+This broker is currently _not_ compliant with the MQTT V5 spec. Visit the [spec compliance milestone](https://github.com/bschwind/mqtt-broker/milestone/1) to see the current progress.
+
+## Dependencies
 - cargo
 - rustc (version 1.39 or later)
 
-# Build
+## Build
 
 ```
 $ cargo build --release
 ```
 
-# Run
+## Run
 
 ```
 $ cargo run --release
 ```
 
-# Testing
+## Testing
 
 ```
 $ cargo test
 ```
 
-# Code Format
+## Code Format
 
 The formatting options currently use nightly-only options.
 
@@ -33,13 +54,13 @@ The formatting options currently use nightly-only options.
 $ cargo +nightly fmt
 ```
 
-# Code Linting
+## Code Linting
 
 ```
 $ cargo clippy
 ```
 
-# Code Fuzzing
+## Code Fuzzing
 
 Fuzzing requires a nightly toolchain. Fuzzing for this project is currently confirmed to work with:
 
@@ -47,7 +68,7 @@ Fuzzing requires a nightly toolchain. Fuzzing for this project is currently conf
 rustc 1.42.0-nightly (6d3f4e0aa 2020-01-25)
 ```
 
-## Running
+### Running
 
 ```
 cargo install cargo-fuzz
