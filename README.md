@@ -20,6 +20,8 @@ Wikipedia has a fairly [comprehensive list](https://en.wikipedia.org/wiki/Compar
 
 [rumqtt](https://github.com/bytebeamio/rumqtt) at the moment appears to be the most fully-featured broker. Take a look there first if you're looking for a more "ready-to-go" Rust broker.
 
+[PubSubRT](https://github.com/alttch/psrt/) is another interesting Rust-based broker. It's an alternative to MQTT, not an implementation of it.
+
 ## Spec Compliance
 
 This broker is currently _not_ compliant with the MQTT V5 spec. Visit the [spec compliance milestone](https://github.com/bschwind/mqtt-broker/milestone/1) to see the current progress.
