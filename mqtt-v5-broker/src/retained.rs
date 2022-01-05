@@ -127,11 +127,74 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
     }
 
     pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
-        // let mut subscriptions = Vec::new();
+        let mut retained_messages = Vec::new();
         let mut tree_stack = vec![(self, 0)];
+        let mut multi_level = false;
         let levels: Vec<TopicLevel> = topic_filter.levels().collect();
 
-        vec![].into_iter()
+        while !tree_stack.is_empty() {
+            let (current_tree, current_level) = tree_stack.pop().unwrap();
+
+            if multi_level {
+                // Add all the retained messages and keep going.
+                for sub_tree in current_tree.concrete_topic_levels.values() {
+                    if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                        retained_messages.push(retained_data);
+                    }
+
+                    tree_stack.push((sub_tree, current_level + 1));
+                }
+
+                continue;
+            }
+
+            let level = &levels[current_level];
+
+            match level {
+                TopicLevel::SingleLevelWildcard => {
+                    for sub_tree in current_tree.concrete_topic_levels.values() {
+                        if current_level + 1 < levels.len() {
+                            tree_stack.push((sub_tree, current_level + 1));
+                        } else {
+                            if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                                retained_messages.push(retained_data);
+                            }
+                        }
+                    }
+                },
+                TopicLevel::MultiLevelWildcard => {
+                    multi_level = true;
+
+                    for sub_tree in current_tree.concrete_topic_levels.values() {
+                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                            retained_messages.push(retained_data);
+                        }
+
+                        tree_stack.push((sub_tree, current_level + 1));
+                    }
+                },
+                TopicLevel::Concrete(concrete_topic_level) => {
+                    if current_tree.concrete_topic_levels.contains_key(*concrete_topic_level) {
+                        let sub_tree =
+                            current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
+
+                        if current_level + 1 < levels.len() {
+                            let sub_tree = current_tree
+                                .concrete_topic_levels
+                                .get(*concrete_topic_level)
+                                .unwrap();
+                            tree_stack.push((sub_tree, current_level + 1));
+                        } else {
+                            if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                                retained_messages.push(retained_data);
+                            }
+                        }
+                    }
+                },
+            }
+        }
+
+        retained_messages.into_iter()
     }
 }
 
@@ -143,10 +206,19 @@ mod tests {
     fn test_insert() {
         let mut sub_tree = RetainedMessageTree::new();
         sub_tree.insert(&"home/kitchen/temperature".parse().unwrap(), 1);
+        sub_tree.insert(&"home/bedroom/temperature".parse().unwrap(), 2);
         sub_tree.insert(&"home/kitchen".parse().unwrap(), 7);
+
+        sub_tree.insert(&"office/cafe".parse().unwrap(), 12);
+        sub_tree.insert(&"office/cafe/temperature".parse().unwrap(), 27);
+
+        for msg in sub_tree.retained_messages(&"+/+/temperature".parse().unwrap()) {
+            dbg!(msg);
+        }
 
         assert_eq!(sub_tree.remove(&"home/kitchen/temperature".parse().unwrap()), Some(1));
         assert_eq!(sub_tree.remove(&"home/kitchen".parse().unwrap()), Some(7));
         assert_eq!(sub_tree.remove(&"home/kitchen".parse().unwrap()), None);
+        dbg!(sub_tree);
     }
 }
