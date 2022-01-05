@@ -22,6 +22,7 @@ use tokio_util::codec::Framed;
 
 mod broker;
 mod client;
+mod retained;
 mod tree;
 
 async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
