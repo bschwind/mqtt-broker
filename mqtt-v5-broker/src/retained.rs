@@ -140,7 +140,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
         let mut path = vec![];
         let levels: Vec<TopicLevel> = topic_filter.levels().collect();
 
-        Self::retained_messages_inner(self, &mut path, &levels, 0, false, &mut retained_messages);
+        Self::retained_messages_inner(self, &mut path, &levels, 0, &mut retained_messages);
 
         retained_messages.into_iter()
     }
@@ -150,33 +150,8 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
         path: &mut Vec<String>,
         levels: &[TopicLevel],
         current_level: usize,
-        multi_level: bool,
         retained_messages: &mut Vec<&'a T>,
     ) {
-        if multi_level {
-            // Add all the retained messages and keep going.
-            for (level, sub_tree) in &current_tree.concrete_topic_levels {
-                path.push(level.to_string());
-                if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                    println!("Adding {:?} at path: {:?}", retained_data, path);
-                    retained_messages.push(retained_data);
-                }
-
-                Self::retained_messages_inner(
-                    sub_tree,
-                    path,
-                    levels,
-                    current_level + 1,
-                    multi_level,
-                    retained_messages,
-                );
-
-                path.pop();
-            }
-
-            return;
-        }
-
         let level = &levels[current_level];
 
         match level {
@@ -190,7 +165,6 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                             path,
                             levels,
                             current_level + 1,
-                            multi_level,
                             retained_messages,
                         );
                     } else {
@@ -211,14 +185,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                         retained_messages.push(retained_data);
                     }
 
-                    Self::retained_messages_inner(
-                        sub_tree,
-                        path,
-                        levels,
-                        current_level + 1,
-                        true,
-                        retained_messages,
-                    );
+                    Self::retained_messages_multilevel(sub_tree, path, retained_messages);
                     path.pop();
                 }
             },
@@ -237,7 +204,6 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                             path,
                             levels,
                             current_level + 1,
-                            false,
                             retained_messages,
                         );
                     } else {
@@ -250,6 +216,25 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                     path.pop();
                 }
             },
+        }
+    }
+
+    fn retained_messages_multilevel<'a>(
+        current_tree: &'a Self,
+        path: &mut Vec<String>,
+        retained_messages: &mut Vec<&'a T>,
+    ) {
+        // Add all the retained messages and keep going.
+        for (level, sub_tree) in &current_tree.concrete_topic_levels {
+            path.push(level.to_string());
+            if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                println!("Adding {:?} at path: {:?}", retained_data, path);
+                retained_messages.push(retained_data);
+            }
+
+            Self::retained_messages_multilevel(sub_tree, path, retained_messages);
+
+            path.pop();
         }
     }
 
@@ -356,8 +341,15 @@ mod tests {
         sub_tree.insert(&"home/bedroom/temperature/val".parse().unwrap(), 2);
         sub_tree.insert(&"home/kitchen/temperature/val".parse().unwrap(), 3);
         sub_tree.insert(&"home/kitchen/humidity/val".parse().unwrap(), 4);
+        sub_tree.insert(&"home/kitchen/humidity/val/celsius".parse().unwrap(), 42);
+
+        sub_tree.insert(&"office/cafe/humidity/val".parse().unwrap(), 5);
+        sub_tree.insert(&"office/cafe/temperature/val".parse().unwrap(), 6);
+        sub_tree.insert(&"office/meeting_room_1/temperature/val".parse().unwrap(), 7);
+        sub_tree.insert(&"office/meeting_room_1/humidity/val".parse().unwrap(), 8);
 
         let filter = "home/+/+/val";
+        println!("{}", filter);
         for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
             dbg!(msg);
         }
@@ -375,6 +367,12 @@ mod tests {
         }
 
         let filter = "+";
+        println!("{}", filter);
+        for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
+            dbg!(msg);
+        }
+
+        let filter = "+/+/#";
         println!("{}", filter);
         for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
             dbg!(msg);
