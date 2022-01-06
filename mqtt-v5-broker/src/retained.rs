@@ -4,6 +4,7 @@ use std::collections::{hash_map::Entry, HashMap};
 #[derive(Debug)]
 pub struct RetainedMessageTreeNode<T> {
     retained_data: Option<T>,
+    // TODO(bschwind) - use TopicLevel instead of String
     concrete_topic_levels: HashMap<String, RetainedMessageTreeNode<T>>,
 }
 
@@ -21,9 +22,14 @@ impl<T: std::fmt::Debug> RetainedMessageTree<T> {
         self.root.insert(topic, retained_data);
     }
 
+    // /// Get the retained messages which match a given topic filter.
+    // pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
+    //     self.root.retained_messages(topic_filter)
+    // }
+
     /// Get the retained messages which match a given topic filter.
     pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
-        self.root.retained_messages(topic_filter)
+        self.root.retained_messages_recursive(topic_filter)
     }
 
     pub fn remove(&mut self, topic: &Topic) -> Option<T> {
@@ -126,76 +132,197 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
         return_val
     }
 
-    pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
-        let mut retained_messages = Vec::new();
-        let mut tree_stack = vec![(self, 0)];
-        let mut multi_level = false;
+    pub fn retained_messages_recursive(
+        &self,
+        topic_filter: &TopicFilter,
+    ) -> impl Iterator<Item = &T> {
+        let mut retained_messages = vec![];
+        let mut path = vec![];
         let levels: Vec<TopicLevel> = topic_filter.levels().collect();
 
-        while !tree_stack.is_empty() {
-            let (current_tree, current_level) = tree_stack.pop().unwrap();
-
-            if multi_level {
-                // Add all the retained messages and keep going.
-                for sub_tree in current_tree.concrete_topic_levels.values() {
-                    if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                        retained_messages.push(retained_data);
-                    }
-
-                    tree_stack.push((sub_tree, current_level + 1));
-                }
-
-                continue;
-            }
-
-            let level = &levels[current_level];
-
-            match level {
-                TopicLevel::SingleLevelWildcard => {
-                    for sub_tree in current_tree.concrete_topic_levels.values() {
-                        if current_level + 1 < levels.len() {
-                            tree_stack.push((sub_tree, current_level + 1));
-                        } else {
-                            if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                                retained_messages.push(retained_data);
-                            }
-                        }
-                    }
-                },
-                TopicLevel::MultiLevelWildcard => {
-                    multi_level = true;
-
-                    for sub_tree in current_tree.concrete_topic_levels.values() {
-                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                            retained_messages.push(retained_data);
-                        }
-
-                        tree_stack.push((sub_tree, current_level + 1));
-                    }
-                },
-                TopicLevel::Concrete(concrete_topic_level) => {
-                    if current_tree.concrete_topic_levels.contains_key(*concrete_topic_level) {
-                        let sub_tree =
-                            current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
-
-                        if current_level + 1 < levels.len() {
-                            let sub_tree = current_tree
-                                .concrete_topic_levels
-                                .get(*concrete_topic_level)
-                                .unwrap();
-                            tree_stack.push((sub_tree, current_level + 1));
-                        } else {
-                            if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                                retained_messages.push(retained_data);
-                            }
-                        }
-                    }
-                },
-            }
-        }
+        Self::retained_messages_inner(self, &mut path, &levels, 0, false, &mut retained_messages);
 
         retained_messages.into_iter()
     }
+
+    fn retained_messages_inner<'a>(
+        current_tree: &'a Self,
+        path: &mut Vec<String>,
+        levels: &[TopicLevel],
+        current_level: usize,
+        multi_level: bool,
+        retained_messages: &mut Vec<&'a T>,
+    ) {
+        if multi_level {
+            // Add all the retained messages and keep going.
+            for (level, sub_tree) in &current_tree.concrete_topic_levels {
+                path.push(level.to_string());
+                if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                    println!("Adding {:?} at path: {:?}", retained_data, path);
+                    retained_messages.push(retained_data);
+                }
+
+                Self::retained_messages_inner(
+                    sub_tree,
+                    path,
+                    levels,
+                    current_level + 1,
+                    multi_level,
+                    retained_messages,
+                );
+
+                path.pop();
+            }
+
+            return;
+        }
+
+        let level = &levels[current_level];
+
+        match level {
+            TopicLevel::SingleLevelWildcard => {
+                for (level, sub_tree) in &current_tree.concrete_topic_levels {
+                    path.push(level.to_string());
+
+                    if current_level + 1 < levels.len() {
+                        Self::retained_messages_inner(
+                            sub_tree,
+                            path,
+                            levels,
+                            current_level + 1,
+                            multi_level,
+                            retained_messages,
+                        );
+                    } else {
+                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                            println!("Adding {:?} at path: {:?}", retained_data, path);
+                            retained_messages.push(retained_data);
+                        }
+                    }
+                    path.pop();
+                }
+            },
+            TopicLevel::MultiLevelWildcard => {
+                for (level, sub_tree) in &current_tree.concrete_topic_levels {
+                    path.push(level.to_string());
+
+                    if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                        println!("Adding {:?} at path: {:?}", retained_data, path);
+                        retained_messages.push(retained_data);
+                    }
+
+                    Self::retained_messages_inner(
+                        sub_tree,
+                        path,
+                        levels,
+                        current_level + 1,
+                        true,
+                        retained_messages,
+                    );
+                    path.pop();
+                }
+            },
+            TopicLevel::Concrete(concrete_topic_level) => {
+                if current_tree.concrete_topic_levels.contains_key(*concrete_topic_level) {
+                    let sub_tree =
+                        current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
+
+                    path.push(concrete_topic_level.to_string());
+
+                    if current_level + 1 < levels.len() {
+                        let sub_tree =
+                            current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
+                        Self::retained_messages_inner(
+                            sub_tree,
+                            path,
+                            levels,
+                            current_level + 1,
+                            false,
+                            retained_messages,
+                        );
+                    } else {
+                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                            println!("Adding {:?} at path: {:?}", retained_data, path);
+                            retained_messages.push(retained_data);
+                        }
+                    }
+
+                    path.pop();
+                }
+            },
+        }
+    }
+
+    // pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
+    //     let mut retained_messages = Vec::new();
+    //     let mut tree_stack = vec![(self, 0)];
+    //     let mut multi_level = false;
+    //     let levels: Vec<TopicLevel> = topic_filter.levels().collect();
+
+    //     while !tree_stack.is_empty() {
+    //         let (current_tree, current_level) = tree_stack.pop().unwrap();
+
+    //         if multi_level {
+    //             // Add all the retained messages and keep going.
+    //             for sub_tree in current_tree.concrete_topic_levels.values() {
+    //                 if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+    //                     retained_messages.push(retained_data);
+    //                 }
+
+    //                 tree_stack.push((sub_tree, current_level + 1));
+    //             }
+
+    //             continue;
+    //         }
+
+    //         let level = &levels[current_level];
+
+    //         match level {
+    //             TopicLevel::SingleLevelWildcard => {
+    //                 for sub_tree in current_tree.concrete_topic_levels.values() {
+    //                     if current_level + 1 < levels.len() {
+    //                         tree_stack.push((sub_tree, current_level + 1));
+    //                     } else {
+    //                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+    //                             retained_messages.push(retained_data);
+    //                         }
+    //                     }
+    //                 }
+    //             },
+    //             TopicLevel::MultiLevelWildcard => {
+    //                 multi_level = true;
+
+    //                 for sub_tree in current_tree.concrete_topic_levels.values() {
+    //                     if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+    //                         retained_messages.push(retained_data);
+    //                     }
+
+    //                     tree_stack.push((sub_tree, current_level + 1));
+    //                 }
+    //             },
+    //             TopicLevel::Concrete(concrete_topic_level) => {
+    //                 if current_tree.concrete_topic_levels.contains_key(*concrete_topic_level) {
+    //                     let sub_tree =
+    //                         current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
+
+    //                     if current_level + 1 < levels.len() {
+    //                         let sub_tree = current_tree
+    //                             .concrete_topic_levels
+    //                             .get(*concrete_topic_level)
+    //                             .unwrap();
+    //                         tree_stack.push((sub_tree, current_level + 1));
+    //                     } else {
+    //                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+    //                             retained_messages.push(retained_data);
+    //                         }
+    //                     }
+    //                 }
+    //             },
+    //         }
+    //     }
+
+    //     retained_messages.into_iter()
+    // }
 }
 
 #[cfg(test)]
@@ -220,5 +347,37 @@ mod tests {
         assert_eq!(sub_tree.remove(&"home/kitchen".parse().unwrap()), Some(7));
         assert_eq!(sub_tree.remove(&"home/kitchen".parse().unwrap()), None);
         dbg!(sub_tree);
+    }
+
+    #[test]
+    fn test_wildcards() {
+        let mut sub_tree = RetainedMessageTree::new();
+        sub_tree.insert(&"home/bedroom/humidity/val".parse().unwrap(), 1);
+        sub_tree.insert(&"home/bedroom/temperature/val".parse().unwrap(), 2);
+        sub_tree.insert(&"home/kitchen/temperature/val".parse().unwrap(), 3);
+        sub_tree.insert(&"home/kitchen/humidity/val".parse().unwrap(), 4);
+
+        let filter = "home/+/+/val";
+        for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
+            dbg!(msg);
+        }
+
+        let filter = "home/bedroom/#";
+        println!("{}", filter);
+        for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
+            dbg!(msg);
+        }
+
+        let filter = "#";
+        println!("{}", filter);
+        for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
+            dbg!(msg);
+        }
+
+        let filter = "+";
+        println!("{}", filter);
+        for msg in sub_tree.retained_messages(&filter.parse().unwrap()) {
+            dbg!(msg);
+        }
     }
 }
