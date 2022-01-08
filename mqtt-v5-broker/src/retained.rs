@@ -22,13 +22,11 @@ impl<T: std::fmt::Debug> RetainedMessageTree<T> {
         self.root.insert(topic, retained_data);
     }
 
-    // /// Get the retained messages which match a given topic filter.
-    // pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
-    //     self.root.retained_messages(topic_filter)
-    // }
-
     /// Get the retained messages which match a given topic filter.
-    pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
+    pub fn retained_messages(
+        &self,
+        topic_filter: &TopicFilter,
+    ) -> impl Iterator<Item = (Topic, &T)> {
         self.root.retained_messages_recursive(topic_filter)
     }
 
@@ -135,7 +133,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
     pub fn retained_messages_recursive(
         &self,
         topic_filter: &TopicFilter,
-    ) -> impl Iterator<Item = &T> {
+    ) -> impl Iterator<Item = (Topic, &T)> {
         let mut retained_messages = vec![];
         let mut path = vec![];
         let levels: Vec<TopicLevel> = topic_filter.levels().collect();
@@ -150,7 +148,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
         path: &mut Vec<String>,
         levels: &[TopicLevel],
         current_level: usize,
-        retained_messages: &mut Vec<&'a T>,
+        retained_messages: &mut Vec<(Topic, &'a T)>,
     ) {
         let level = &levels[current_level];
 
@@ -169,8 +167,8 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                         );
                     } else {
                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                            println!("Adding {:?} at path: {:?}", retained_data, path);
-                            retained_messages.push(retained_data);
+                            let topic = Topic::from_concrete_levels(&path);
+                            retained_messages.push((topic, retained_data));
                         }
                     }
                     path.pop();
@@ -181,8 +179,8 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                     path.push(level.to_string());
 
                     if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                        println!("Adding {:?} at path: {:?}", retained_data, path);
-                        retained_messages.push(retained_data);
+                        let topic = Topic::from_concrete_levels(&path);
+                        retained_messages.push((topic, retained_data));
                     }
 
                     Self::retained_messages_multilevel(sub_tree, path, retained_messages);
@@ -208,8 +206,8 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                         );
                     } else {
                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                            println!("Adding {:?} at path: {:?}", retained_data, path);
-                            retained_messages.push(retained_data);
+                            let topic = Topic::from_concrete_levels(&path);
+                            retained_messages.push((topic, retained_data));
                         }
                     }
 
@@ -222,14 +220,14 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
     fn retained_messages_multilevel<'a>(
         current_tree: &'a Self,
         path: &mut Vec<String>,
-        retained_messages: &mut Vec<&'a T>,
+        retained_messages: &mut Vec<(Topic, &'a T)>,
     ) {
         // Add all the retained messages and keep going.
         for (level, sub_tree) in &current_tree.concrete_topic_levels {
             path.push(level.to_string());
             if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                println!("Adding {:?} at path: {:?}", retained_data, path);
-                retained_messages.push(retained_data);
+                let topic = Topic::from_concrete_levels(&path);
+                retained_messages.push((topic, retained_data));
             }
 
             Self::retained_messages_multilevel(sub_tree, path, retained_messages);
@@ -237,77 +235,6 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
             path.pop();
         }
     }
-
-    // pub fn retained_messages(&self, topic_filter: &TopicFilter) -> impl Iterator<Item = &T> {
-    //     let mut retained_messages = Vec::new();
-    //     let mut tree_stack = vec![(self, 0)];
-    //     let mut multi_level = false;
-    //     let levels: Vec<TopicLevel> = topic_filter.levels().collect();
-
-    //     while !tree_stack.is_empty() {
-    //         let (current_tree, current_level) = tree_stack.pop().unwrap();
-
-    //         if multi_level {
-    //             // Add all the retained messages and keep going.
-    //             for sub_tree in current_tree.concrete_topic_levels.values() {
-    //                 if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-    //                     retained_messages.push(retained_data);
-    //                 }
-
-    //                 tree_stack.push((sub_tree, current_level + 1));
-    //             }
-
-    //             continue;
-    //         }
-
-    //         let level = &levels[current_level];
-
-    //         match level {
-    //             TopicLevel::SingleLevelWildcard => {
-    //                 for sub_tree in current_tree.concrete_topic_levels.values() {
-    //                     if current_level + 1 < levels.len() {
-    //                         tree_stack.push((sub_tree, current_level + 1));
-    //                     } else {
-    //                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-    //                             retained_messages.push(retained_data);
-    //                         }
-    //                     }
-    //                 }
-    //             },
-    //             TopicLevel::MultiLevelWildcard => {
-    //                 multi_level = true;
-
-    //                 for sub_tree in current_tree.concrete_topic_levels.values() {
-    //                     if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-    //                         retained_messages.push(retained_data);
-    //                     }
-
-    //                     tree_stack.push((sub_tree, current_level + 1));
-    //                 }
-    //             },
-    //             TopicLevel::Concrete(concrete_topic_level) => {
-    //                 if current_tree.concrete_topic_levels.contains_key(*concrete_topic_level) {
-    //                     let sub_tree =
-    //                         current_tree.concrete_topic_levels.get(*concrete_topic_level).unwrap();
-
-    //                     if current_level + 1 < levels.len() {
-    //                         let sub_tree = current_tree
-    //                             .concrete_topic_levels
-    //                             .get(*concrete_topic_level)
-    //                             .unwrap();
-    //                         tree_stack.push((sub_tree, current_level + 1));
-    //                     } else {
-    //                         if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-    //                             retained_messages.push(retained_data);
-    //                         }
-    //                     }
-    //                 }
-    //             },
-    //         }
-    //     }
-
-    //     retained_messages.into_iter()
-    // }
 }
 
 #[cfg(test)]

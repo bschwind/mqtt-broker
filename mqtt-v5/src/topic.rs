@@ -27,6 +27,12 @@ impl Topic {
     pub fn topic_name(&self) -> &str {
         &self.topic_name
     }
+
+    pub fn from_concrete_levels(levels: &[String]) -> Self {
+        let topic_name = levels.join(&TOPIC_SEPARATOR.to_string());
+
+        Self { topic_name, level_count: levels.len() as u32 }
+    }
 }
 
 #[derive(Debug, PartialEq)]
