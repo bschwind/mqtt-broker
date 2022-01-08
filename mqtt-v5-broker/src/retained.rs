@@ -165,11 +165,9 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                             current_level + 1,
                             retained_messages,
                         );
-                    } else {
-                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                            let topic = Topic::from_concrete_levels(&path);
-                            retained_messages.push((topic, retained_data));
-                        }
+                    } else if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                        let topic = Topic::from_concrete_levels(path);
+                        retained_messages.push((topic, retained_data));
                     }
                     path.pop();
                 }
@@ -179,7 +177,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                     path.push(level.to_string());
 
                     if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                        let topic = Topic::from_concrete_levels(&path);
+                        let topic = Topic::from_concrete_levels(path);
                         retained_messages.push((topic, retained_data));
                     }
 
@@ -204,11 +202,9 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
                             current_level + 1,
                             retained_messages,
                         );
-                    } else {
-                        if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                            let topic = Topic::from_concrete_levels(&path);
-                            retained_messages.push((topic, retained_data));
-                        }
+                    } else if let Some(retained_data) = sub_tree.retained_data.as_ref() {
+                        let topic = Topic::from_concrete_levels(path);
+                        retained_messages.push((topic, retained_data));
                     }
 
                     path.pop();
@@ -226,7 +222,7 @@ impl<T: std::fmt::Debug> RetainedMessageTreeNode<T> {
         for (level, sub_tree) in &current_tree.concrete_topic_levels {
             path.push(level.to_string());
             if let Some(retained_data) = sub_tree.retained_data.as_ref() {
-                let topic = Topic::from_concrete_levels(&path);
+                let topic = Topic::from_concrete_levels(path);
                 retained_messages.push((topic, retained_data));
             }
 
