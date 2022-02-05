@@ -224,7 +224,6 @@ impl<T: std::fmt::Debug> SubscriptionTreeNode<T> {
                     let sub_tree = current_tree.concrete_topic_levels.get(*level).unwrap();
 
                     if current_level + 1 < levels.len() {
-                        let sub_tree = current_tree.concrete_topic_levels.get(*level).unwrap();
                         tree_stack.push((sub_tree, current_level + 1));
                     } else {
                         subscriptions

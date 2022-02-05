@@ -1,4 +1,5 @@
-use crate::{client::ClientMessage, tree::SubscriptionTree};
+use crate::{client::ClientMessage, retained::RetainedMessageTree, tree::SubscriptionTree};
+use bytes::Bytes;
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
@@ -193,13 +194,20 @@ pub struct Broker {
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
     subscriptions: SubscriptionTree<SessionSubscription>,
+    retained_messages: RetainedMessageTree<Bytes>,
 }
 
 impl Broker {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(100);
 
-        Self { sessions: HashMap::new(), sender, receiver, subscriptions: SubscriptionTree::new() }
+        Self {
+            sessions: HashMap::new(),
+            sender,
+            receiver,
+            subscriptions: SubscriptionTree::new(),
+            retained_messages: RetainedMessageTree::new(),
+        }
     }
 
     pub fn sender(&self) -> Sender<BrokerMessage> {
@@ -346,6 +354,7 @@ impl Broker {
 
     async fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
         let subscriptions = &mut self.subscriptions;
+        let retained_messages = &self.retained_messages;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
             // If a Server receives a SUBSCRIBE packet containing a Topic Filter that
@@ -368,7 +377,7 @@ impl Broker {
             // and return the QoS that was granted.
             let granted_qos_values = packet
                 .subscription_topics
-                .into_iter()
+                .iter()
                 .map(|topic| {
                     let session_subscription = SessionSubscription {
                         client_id: client_id.clone(),
@@ -394,6 +403,35 @@ impl Broker {
             };
 
             session.send(ClientMessage::Packet(Packet::SubscribeAck(subscribe_ack))).await;
+
+            // Send all retained messages which match the new subscriptions
+            let mut publish_packets = vec![];
+            for topic in packet.subscription_topics {
+                for (topic, retained_message) in
+                    retained_messages.retained_messages(&topic.topic_filter)
+                {
+                    let publish = PublishPacket {
+                        is_duplicate: false,
+                        qos: QoS::AtMostOnce, // TODO(bschwind)
+                        retain: true,
+                        topic,
+                        payload: retained_message.clone(),
+
+                        packet_id: None, // TODO(bschwind)
+                        payload_format_indicator: None,
+                        message_expiry_interval: None,
+                        topic_alias: None,
+                        response_topic: None,
+                        correlation_data: None,
+                        user_properties: vec![],
+                        subscription_identifier: None,
+                        content_type: None,
+                    };
+                    publish_packets.push(Packet::Publish(publish));
+                }
+            }
+
+            session.send(ClientMessage::Packets(publish_packets)).await;
         }
     }
 
@@ -530,6 +568,16 @@ impl Broker {
 
     async fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
         let mut is_dup = false;
+
+        if packet.retain {
+            if packet.payload.len() > 0 {
+                println!("Storing retained message for topic {:?}", packet.topic);
+                self.retained_messages.insert(&packet.topic, packet.payload.clone());
+            } else {
+                println!("Deleting retained message for topic {:?}", packet.topic);
+                self.retained_messages.remove(&packet.topic);
+            }
+        }
 
         // For QoS2, ensure this packet isn't delivered twice. So if we have an outgoing
         // publish receive with the same ID, just send the publish receive again but don't forward
