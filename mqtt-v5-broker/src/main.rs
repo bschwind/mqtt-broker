@@ -4,6 +4,7 @@ use crate::{
 };
 use bytes::BytesMut;
 use futures::{stream, SinkExt, StreamExt};
+use log::{debug, info, trace, warn};
 use mqtt_v5::{
     codec::MqttCodec,
     encoder,
@@ -25,7 +26,7 @@ mod client;
 mod tree;
 
 async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
-    println!("Handling a client");
+    debug!("Handling client {:?}", stream.peer_addr());
 
     let (sink, stream) = Framed::new(stream, MqttCodec::new()).split();
     let unconnected_client = UnconnectedClient::new(stream, sink, broker_tx);
@@ -33,7 +34,7 @@ async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     let connected_client = match unconnected_client.handshake().await {
         Ok(connected_client) => connected_client,
         Err(err) => {
-            println!("Protocol error during connection handshake: {:?}", err);
+            warn!("Protocol error during connection handshake: {:?}", err);
             return;
         },
     };
@@ -60,7 +61,7 @@ async fn upgrade_stream(stream: TcpStream) -> Framed<TcpStream, WsMessageCodec> 
 }
 
 async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
-    println!("Handling a WebSocket client");
+    debug!("Handling WebSocket client {:?}", stream.peer_addr());
 
     let ws_framed = upgrade_stream(stream).await;
 
@@ -115,7 +116,7 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
                             }
 
                             if message.opcode() == Opcode::Ping {
-                                println!("Got a websocket ping");
+                                trace!("Got a websocket ping");
                             }
 
                             if message.opcode() != Opcode::Binary {
@@ -129,7 +130,7 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
                             read_buf.extend_from_slice(&message.into_data());
                         },
                         Some(Err(e)) => {
-                            println!("Error while reading from WebSocket stream: {:?}", e);
+                            debug!("Error while reading from WebSocket stream: {:?}", e);
                             // If we had a decode error in the WebSocket layer,
                             // propagate the it along the stream
                             return Some((
@@ -153,7 +154,7 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
     let connected_client = match unconnected_client.handshake().await {
         Ok(connected_client) => connected_client,
         Err(err) => {
-            println!("Protocol error during connection handshake: {:?}", err);
+            warn!("Protocol error during connection handshake: {:?}", err);
             return;
         },
     };
@@ -165,12 +166,12 @@ async fn server_loop(broker_tx: Sender<BrokerMessage>) {
     let bind_addr = "0.0.0.0:1883";
     let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 1883");
 
-    println!("Listening on {}", bind_addr);
+    info!("Listening on {}", bind_addr);
 
     loop {
         let (socket, addr) =
             listener.accept().await.expect("Error in server_loop 'listener.accept()");
-        println!("Got a new socket from addr: {:?}", addr);
+        info!("Got a new socket from addr: {:?}", addr);
 
         let handler = client_handler(socket, broker_tx.clone());
 
@@ -182,12 +183,12 @@ async fn websocket_server_loop(broker_tx: Sender<BrokerMessage>) {
     let bind_addr = "0.0.0.0:8080";
     let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 8080");
 
-    println!("Listening on {}", bind_addr);
+    info!("Listening on {}", bind_addr);
 
     loop {
         let (socket, addr) =
             listener.accept().await.expect("Error in websocket_server_loop 'listener.accept()");
-        println!("Got a new socket from addr: {:?}", addr);
+        info!("Got a new socket from addr: {:?}", addr);
 
         let handler = websocket_client_handler(socket, broker_tx.clone());
 
