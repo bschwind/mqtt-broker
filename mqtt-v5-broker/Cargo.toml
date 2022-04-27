@@ -16,3 +16,4 @@ mqtt-v5 = { path = "../mqtt-v5", version = "0.2" }
 nanoid = "0.3"
 tokio = { version = "1", features = ["net", "rt-multi-thread", "sync", "time", "macros"] }
 tokio-util = { version = "0.6", features = ["codec"] }
+env_logger = "0.8.4"

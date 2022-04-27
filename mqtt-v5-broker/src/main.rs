@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::{
     broker::{Broker, BrokerMessage},
     client::UnconnectedClient,
@@ -196,7 +198,17 @@ async fn websocket_server_loop(broker_tx: Sender<BrokerMessage>) {
     }
 }
 
+fn init_logging() {
+    if env::var("RUST_LOG").is_err() {
+        env_logger::builder().filter(None, log::LevelFilter::Debug).init();
+    } else {
+        env_logger::init();
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_logging();
+
     // Creating a Runtime does the following:
     // * Spawn a background thread running a Reactor instance.
     // * Start a ThreadPool for executing futures.
