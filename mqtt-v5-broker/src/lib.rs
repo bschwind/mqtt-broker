@@ -1,6 +1,3 @@
-mod broker;
-mod client;
+pub mod broker;
+pub mod client;
 mod tree;
-
-pub use broker::{Broker, BrokerMessage};
-pub use client::UnconnectedClient;

@@ -4,7 +4,6 @@ use bytes::BytesMut;
 use futures::{stream, SinkExt, StreamExt};
 use log::{debug, info, trace, warn};
 use mqtt_v5::{
-    codec::MqttCodec,
     encoder,
     types::{DecodeError, EncodeError, Packet, ProtocolVersion},
     websocket::{
@@ -12,30 +11,16 @@ use mqtt_v5::{
         WsUpgraderCodec,
     },
 };
-use mqtt_v5_broker::{Broker, BrokerMessage, UnconnectedClient};
+use mqtt_v5_broker::{
+    broker::{Broker, BrokerMessage},
+    client::{self, UnconnectedClient},
+};
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
     sync::mpsc::Sender,
 };
 use tokio_util::codec::Framed;
-
-async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
-    debug!("Handling client {:?}", stream.peer_addr());
-
-    let (sink, stream) = Framed::new(stream, MqttCodec::new()).split();
-    let unconnected_client = UnconnectedClient::new(stream, sink, broker_tx);
-
-    let connected_client = match unconnected_client.handshake().await {
-        Ok(connected_client) => connected_client,
-        Err(err) => {
-            warn!("Protocol error during connection handshake: {:?}", err);
-            return;
-        },
-    };
-
-    connected_client.run().await;
-}
 
 async fn upgrade_stream(stream: TcpStream) -> Framed<TcpStream, WsMessageCodec> {
     let mut upgrade_framed = Framed::new(stream, WsUpgraderCodec::new());
@@ -164,13 +149,10 @@ async fn server_loop(broker_tx: Sender<BrokerMessage>) {
     info!("Listening on {}", bind_addr);
 
     loop {
-        let (socket, addr) =
+        let (stream, addr) =
             listener.accept().await.expect("Error in server_loop 'listener.accept()");
-        info!("Got a new socket from addr: {:?}", addr);
-
-        let handler = client_handler(socket, broker_tx.clone());
-
-        tokio::spawn(handler);
+        debug!("Client {} connected", addr);
+        client::spawn(stream, broker_tx.clone());
     }
 }
 

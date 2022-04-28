@@ -4,21 +4,41 @@ use futures::{
     stream, Sink, SinkExt, Stream, StreamExt,
 };
 use log::{debug, info, trace, warn};
-use mqtt_v5::types::{
-    DecodeError, DisconnectPacket, DisconnectReason, EncodeError, Packet, ProtocolError,
-    ProtocolVersion, QoS,
+use mqtt_v5::{
+    codec::MqttCodec,
+    types::{
+        DecodeError, DisconnectPacket, DisconnectReason, EncodeError, Packet, ProtocolError,
+        ProtocolVersion, QoS,
+    },
 };
 use nanoid::nanoid;
 use std::{marker::Unpin, time::Duration};
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     sync::mpsc::{self, Receiver, Sender},
-    time,
+    task, time,
 };
+use tokio_util::codec::Framed;
 
 type PacketResult = Result<Packet, DecodeError>;
 
 /// Timeout when writing to a client sink
 const SINK_SEND_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Process MQTT connect on `stream` and spawn a task for this connection
+pub fn spawn<S: AsyncRead + AsyncWrite + Send + Sync + 'static>(
+    stream: S,
+    broker_tx: Sender<BrokerMessage>,
+) {
+    task::spawn(async move {
+        let (sink, stream) = Framed::new(stream, MqttCodec::new()).split();
+        let unconnected_client = UnconnectedClient::new(stream, sink, broker_tx);
+        match unconnected_client.handshake().await {
+            Ok(client) => client.run().await,
+            Err(err) => warn!("Protocol error during connection handshake: {:?}", err),
+        }
+    });
+}
 
 pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>>
 {
