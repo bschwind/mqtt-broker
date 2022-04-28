@@ -1,9 +1,5 @@
 use std::env;
 
-use crate::{
-    broker::{Broker, BrokerMessage},
-    client::UnconnectedClient,
-};
 use bytes::BytesMut;
 use futures::{stream, SinkExt, StreamExt};
 use log::{debug, info, trace, warn};
@@ -16,16 +12,13 @@ use mqtt_v5::{
         WsUpgraderCodec,
     },
 };
+use mqtt_v5_broker::{Broker, BrokerMessage, UnconnectedClient};
 use tokio::{
     net::{TcpListener, TcpStream},
     runtime::Runtime,
     sync::mpsc::Sender,
 };
 use tokio_util::codec::Framed;
-
-mod broker;
-mod client;
-mod tree;
 
 async fn client_handler(stream: TcpStream, broker_tx: Sender<BrokerMessage>) {
     debug!("Handling client {:?}", stream.peer_addr());
