@@ -196,6 +196,12 @@ pub struct Broker {
     subscriptions: SubscriptionTree<SessionSubscription>,
 }
 
+impl Default for Broker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Broker {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(100);
