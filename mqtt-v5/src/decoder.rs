@@ -304,6 +304,16 @@ fn decode_properties<F: FnMut(Property)>(
     bytes: &mut Cursor<&mut BytesMut>,
     mut closure: F,
 ) -> Result<Option<()>, DecodeError> {
+    try_decode_properties(bytes, |property| {
+        closure(property);
+        Ok(())
+    })
+}
+
+fn try_decode_properties<F: FnMut(Property) -> Result<(), DecodeError>>(
+    bytes: &mut Cursor<&mut BytesMut>,
+    mut closure: F,
+) -> Result<Option<()>, DecodeError> {
     let property_length = read_variable_int!(bytes);
 
     if property_length == 0 {
@@ -322,7 +332,7 @@ fn decode_properties<F: FnMut(Property)>(
         }
 
         let property = read_property!(bytes);
-        closure(property);
+        closure(property)?;
     }
 
     Ok(Some(()))
@@ -781,13 +791,27 @@ fn decode_subscribe(
     let mut user_properties = vec![];
 
     if protocol_version == ProtocolVersion::V500 {
-        return_if_none!(decode_properties(bytes, |property| {
+        try_decode_properties(bytes, |property| {
             match property {
-                Property::SubscriptionIdentifier(p) => subscription_identifier = Some(p),
-                Property::UserProperty(p) => user_properties.push(p),
-                _ => {}, // Invalid property for packet
+                // [MQTT-3.8.2.1.2] The subscription identifier is allowed exactly once
+                Property::SubscriptionIdentifier(_) if subscription_identifier.is_some() => {
+                    Err(DecodeError::InvalidSubscriptionIdentifier)
+                },
+                // [MQTT-3.8.2.1.2] The subscription identifier must not be 0
+                Property::SubscriptionIdentifier(SubscriptionIdentifier(VariableByteInt(0))) => {
+                    Err(DecodeError::InvalidSubscriptionIdentifier)
+                },
+                Property::SubscriptionIdentifier(p) => {
+                    subscription_identifier = Some(p);
+                    Ok(())
+                },
+                Property::UserProperty(p) => {
+                    user_properties.push(p);
+                    Ok(())
+                },
+                _ => Err(DecodeError::InvalidPropertyForPacket),
             }
-        })?);
+        })?;
     }
 
     let variable_header_size = (bytes.position() - start_cursor_pos) as u32;

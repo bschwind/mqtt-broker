@@ -23,6 +23,7 @@ pub enum DecodeError {
     InvalidPublishReleaseReason,
     InvalidPublishCompleteReason,
     InvalidSubscribeAckReason,
+    InvalidSubscriptionIdentifier,
     InvalidUnsubscribeAckReason,
     InvalidAuthenticateReason,
     InvalidPropertyId,
