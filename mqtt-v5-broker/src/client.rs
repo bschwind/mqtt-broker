@@ -4,15 +4,29 @@ use futures::{
     stream, Sink, SinkExt, Stream, StreamExt,
 };
 use log::{debug, info, trace, warn};
-use mqtt_v5::types::{
-    DecodeError, DisconnectPacket, DisconnectReason, EncodeError, Packet, ProtocolError,
-    ProtocolVersion, QoS,
+use mqtt_v5::{
+    codec::MqttCodec,
+    types::{
+        DecodeError, DisconnectPacket, DisconnectReason, EncodeError, Packet, ProtocolError,
+        ProtocolVersion, QoS,
+    },
 };
 use nanoid::nanoid;
 use std::{marker::Unpin, time::Duration};
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     sync::mpsc::{self, Receiver, Sender},
-    time,
+    task, time,
+};
+use tokio_util::codec::Framed;
+
+use bytes::BytesMut;
+use mqtt_v5::{
+    encoder,
+    websocket::{
+        codec::{Message, MessageCodec as WsMessageCodec, Opcode},
+        WsUpgraderCodec,
+    },
 };
 
 type PacketResult = Result<Packet, DecodeError>;
@@ -20,8 +34,147 @@ type PacketResult = Result<Packet, DecodeError>;
 /// Timeout when writing to a client sink
 const SINK_SEND_TIMEOUT: Duration = Duration::from_secs(1);
 
-pub struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>>
+/// Process MQTT connect on `stream` and spawn a task for this connection
+/// TOOD(flxo): Move to dedicated module `io`?
+pub fn spawn<S>(stream: S, broker_tx: Sender<BrokerMessage>)
+where
+    S: AsyncRead + AsyncWrite + Send + Sync + 'static,
 {
+    let (packet_sink, packet_stream) = Framed::new(stream, MqttCodec::new()).split();
+    spawn_framed(packet_stream, packet_sink, broker_tx);
+}
+
+/// TOOD(flxo): Move to dedicated module `io`?
+pub fn spawn_framed<ST, SI>(packet_stream: ST, packet_sink: SI, broker_tx: Sender<BrokerMessage>)
+where
+    ST: Stream<Item = PacketResult> + Unpin + Send + Sync + 'static,
+    SI: Sink<Packet, Error = EncodeError> + Unpin + Send + Sync + 'static,
+{
+    task::spawn(async move {
+        let unconnected_client = UnconnectedClient::new(packet_stream, packet_sink, broker_tx);
+        match unconnected_client.handshake().await {
+            Ok(client) => client.run().await,
+            Err(err) => warn!("Protocol error during connection handshake: {:?}", err),
+        }
+    });
+}
+
+/// TOOD(flxo): Move to dedicated module `io`?
+async fn upgrade_ws_stream<S>(stream: S) -> Framed<S, WsMessageCodec>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+{
+    let mut upgrade_framed = Framed::new(stream, WsUpgraderCodec::new());
+
+    let upgrade_msg = upgrade_framed.next().await;
+
+    if let Some(Ok(websocket_key)) = upgrade_msg {
+        let _ = upgrade_framed.send(websocket_key).await;
+    }
+
+    let old_parts = upgrade_framed.into_parts();
+    let mut new_parts =
+        Framed::new(old_parts.io, WsMessageCodec::with_masked_encode(false)).into_parts();
+    new_parts.read_buf = old_parts.read_buf;
+    new_parts.write_buf = old_parts.write_buf;
+
+    Framed::from_parts(new_parts)
+}
+
+/// TOOD(flxo): Move to dedicated module `io`?
+pub async fn spawn_websocket<S>(stream: S, broker_tx: Sender<BrokerMessage>)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+{
+    let ws_framed = upgrade_ws_stream(stream).await;
+
+    let (sink, ws_stream) = ws_framed.split();
+    let sink = sink.with(|packet: Packet| {
+        let mut payload_bytes = BytesMut::new();
+        // TODO(bschwind) - Support MQTTv5 here. With a stateful Framed object we can store
+        //                  the version on a successful Connect decode, but in this code structure
+        //                  we can't pass state from the stream to the sink.
+        encoder::encode_mqtt(&packet, &mut payload_bytes, ProtocolVersion::V311);
+
+        async {
+            let result: Result<Message, EncodeError> = Ok(Message::binary(payload_bytes.freeze()));
+            result
+        }
+    });
+
+    let read_buf = BytesMut::with_capacity(4096);
+
+    let stream = stream::unfold(
+        (ws_stream, read_buf, ProtocolVersion::V311),
+        |(mut ws_stream, mut read_buf, mut protocol_version)| {
+            async move {
+                // Loop until we've built up enough data from the WebSocket stream
+                // to decode a new MQTT packet
+                loop {
+                    // Try to read an MQTT packet from the read buffer
+                    match mqtt_v5::decoder::decode_mqtt(&mut read_buf, protocol_version) {
+                        Ok(Some(packet)) => {
+                            if let Packet::Connect(packet) = &packet {
+                                protocol_version = packet.protocol_version;
+                            }
+
+                            // If we got one, return it
+                            return Some((Ok(packet), (ws_stream, read_buf, protocol_version)));
+                        },
+                        Err(e) => {
+                            // If we had a decode error, propagate the error along the stream
+                            return Some((Err(e), (ws_stream, read_buf, protocol_version)));
+                        },
+                        Ok(None) => {
+                            // Otherwise we need more binary data from the WebSocket stream
+                        },
+                    }
+
+                    let ws_frame = ws_stream.next().await;
+
+                    match ws_frame {
+                        Some(Ok(message)) => {
+                            if message.opcode() == Opcode::Close {
+                                return None;
+                            }
+
+                            if message.opcode() == Opcode::Ping {
+                                trace!("Got a websocket ping");
+                            }
+
+                            if message.opcode() != Opcode::Binary {
+                                // MQTT Control Packets MUST be sent in WebSocket binary data frames
+                                return Some((
+                                    Err(DecodeError::BadTransport),
+                                    (ws_stream, read_buf, protocol_version),
+                                ));
+                            }
+
+                            read_buf.extend_from_slice(&message.into_data());
+                        },
+                        Some(Err(e)) => {
+                            debug!("Error while reading from WebSocket stream: {:?}", e);
+                            // If we had a decode error in the WebSocket layer,
+                            // propagate the it along the stream
+                            return Some((
+                                Err(DecodeError::BadTransport),
+                                (ws_stream, read_buf, protocol_version),
+                            ));
+                        },
+                        None => {
+                            // The WebSocket stream is over, so we are too
+                            return None;
+                        },
+                    }
+                }
+            }
+        },
+    );
+
+    spawn_framed(Box::pin(stream), Box::pin(sink), broker_tx);
+}
+
+struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>> {
     packet_stream: ST,
     packet_sink: SI,
     broker_tx: Sender<BrokerMessage>,

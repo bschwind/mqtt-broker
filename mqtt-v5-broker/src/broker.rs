@@ -17,7 +17,8 @@ use std::{
 };
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-pub struct Session {
+struct Session {
+    #[allow(unused)]
     pub protocol_version: ProtocolVersion,
     // pub subscriptions: HashSet<SubscriptionTopic>,
     // pub shared_subscriptions: HashSet<SubscriptionTopic>,
@@ -194,6 +195,12 @@ pub struct Broker {
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
     subscriptions: SubscriptionTree<SessionSubscription>,
+}
+
+impl Default for Broker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Broker {
