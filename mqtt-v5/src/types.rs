@@ -23,6 +23,7 @@ pub enum DecodeError {
     InvalidPublishReleaseReason,
     InvalidPublishCompleteReason,
     InvalidSubscribeAckReason,
+    InvalidSubscriptionIdentifier,
     InvalidUnsubscribeAckReason,
     InvalidAuthenticateReason,
     InvalidPropertyId,
@@ -125,6 +126,14 @@ impl Encode for Vec<UserProperty> {
     fn encode(&self, bytes: &mut BytesMut) {
         for property in self {
             property.encode(bytes);
+        }
+    }
+}
+
+impl Encode for Vec<SubscriptionIdentifier> {
+    fn encode(&self, bytes: &mut BytesMut) {
+        for identifier in self {
+            identifier.encode(bytes);
         }
     }
 }
@@ -315,6 +324,11 @@ pub mod properties {
     impl PacketSize for SubscriptionIdentifier {
         fn calc_size(&self, protocol_version: ProtocolVersion) -> u32 {
             1 + self.0.calc_size(protocol_version)
+        }
+    }
+    impl PacketSize for Vec<SubscriptionIdentifier> {
+        fn calc_size(&self, protocol_version: ProtocolVersion) -> u32 {
+            self.iter().map(|x| x.calc_size(protocol_version)).sum()
         }
     }
 
@@ -917,7 +931,7 @@ pub struct PublishPacket {
     pub response_topic: Option<ResponseTopic>,
     pub correlation_data: Option<CorrelationData>,
     pub user_properties: Vec<UserProperty>,
-    pub subscription_identifier: Option<SubscriptionIdentifier>,
+    pub subscription_identifiers: Vec<SubscriptionIdentifier>,
     pub content_type: Option<ContentType>,
 
     // Payload
@@ -933,7 +947,7 @@ impl PropertySize for PublishPacket {
         property_size += self.response_topic.calc_size(protocol_version);
         property_size += self.correlation_data.calc_size(protocol_version);
         property_size += self.user_properties.calc_size(protocol_version);
-        property_size += self.subscription_identifier.calc_size(protocol_version);
+        property_size += self.subscription_identifiers.calc_size(protocol_version);
         property_size += self.content_type.calc_size(protocol_version);
 
         property_size
@@ -958,7 +972,7 @@ impl From<FinalWill> for PublishPacket {
             response_topic: will.response_topic,
             correlation_data: will.correlation_data,
             user_properties: will.user_properties,
-            subscription_identifier: None,
+            subscription_identifiers: Vec::with_capacity(0),
             content_type: will.content_type,
 
             // Payload
