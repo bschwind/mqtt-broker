@@ -403,6 +403,12 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
                             return;
                         },
+                        Packet::Authenticate(packet) => {
+                            broker_tx
+                                .send(BrokerMessage::Authenticate(client_id.clone(), packet))
+                                .await
+                                .expect("Couldn't send Authentivate message to self");
+                        },
                         _ => {},
                     },
                     Err(err) => {

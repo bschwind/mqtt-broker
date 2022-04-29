@@ -1,10 +1,15 @@
 use std::{env, io};
 
 use futures::future::try_join_all;
-use log::{debug, info};
+use log::{debug, info, trace};
+use mqtt_v5::types::{
+    properties::{AuthenticationData, AuthenticationMethod},
+    AuthenticatePacket, PublishPacket, SubscribePacket,
+};
 use mqtt_v5_broker::{
     broker::{Broker, BrokerMessage},
     client,
+    plugin::{self},
 };
 use tokio::{net::TcpListener, sync::mpsc::Sender, task};
 
@@ -44,11 +49,39 @@ fn init_logging() {
     }
 }
 
+#[derive(Default)]
+struct TracePlugin;
+
+impl plugin::Plugin for TracePlugin {
+    fn on_connect(
+        &mut self,
+        _: Option<&AuthenticationMethod>,
+        _: Option<&AuthenticationData>,
+    ) -> plugin::AuthentificationResult {
+        plugin::AuthentificationResult::Success
+    }
+
+    fn on_authenticate(&mut self, packet: &AuthenticatePacket) -> plugin::AuthentificationResult {
+        trace!("Authenticate packet received: {:?}", packet);
+        plugin::AuthentificationResult::Success
+    }
+
+    fn on_subscribe(&mut self, packet: &SubscribePacket) -> plugin::SubscribeResult {
+        trace!("Subscribe packet received: {:?}", packet);
+        plugin::SubscribeResult::Placeholder
+    }
+
+    fn on_publish_received(&mut self, packet: &PublishPacket) -> plugin::PublishReceivedResult {
+        trace!("Publish packet received: {:?}", packet);
+        plugin::PublishReceivedResult::Placeholder
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
-    let broker = Broker::new();
+    let broker = Broker::with_plugin(TracePlugin::default());
     let broker_tx = broker.sender();
     let broker = task::spawn(async {
         broker.run().await;

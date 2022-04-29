@@ -1,14 +1,19 @@
-use crate::{client::ClientMessage, tree::SubscriptionTree};
+use crate::{
+    client::ClientMessage,
+    plugin::{Noop, Plugin},
+    tree::SubscriptionTree,
+};
 use log::{info, warn};
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
         properties::{AssignedClientIdentifier, SessionExpiryInterval},
-        ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectReason, FinalWill, Packet,
-        ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
-        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
-        PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason,
-        SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason, UnsubscribePacket,
+        AuthenticatePacket, ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectReason,
+        FinalWill, Packet, ProtocolVersion, PublishAckPacket, PublishAckReason,
+        PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
+        PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket,
+        SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
+        UnsubscribePacket,
     },
 };
 use std::{
@@ -179,6 +184,7 @@ pub enum WillDisconnectLogic {
 #[derive(Debug)]
 pub enum BrokerMessage {
     NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
+    Authenticate(String, AuthenticatePacket),
     Publish(String, Box<PublishPacket>),
     PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
     PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
@@ -190,24 +196,46 @@ pub enum BrokerMessage {
     Disconnect(String, WillDisconnectLogic),
 }
 
-pub struct Broker {
+pub struct Broker<A> {
     sessions: HashMap<String, Session>,
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
     subscriptions: SubscriptionTree<SessionSubscription>,
+    #[allow(unused)]
+    plugin: A,
 }
 
-impl Default for Broker {
+impl Default for Broker<Noop> {
     fn default() -> Self {
-        Self::new()
+        Broker::<Noop>::new()
     }
 }
 
-impl Broker {
-    pub fn new() -> Self {
+impl<A: Plugin> Broker<A> {
+    /// Construct a new Broker.
+    pub fn new() -> Broker<Noop> {
         let (sender, receiver) = mpsc::channel(100);
 
-        Self { sessions: HashMap::new(), sender, receiver, subscriptions: SubscriptionTree::new() }
+        Broker {
+            sessions: HashMap::new(),
+            sender,
+            receiver,
+            subscriptions: SubscriptionTree::new(),
+            plugin: Noop,
+        }
+    }
+
+    /// Construct a new Broker.
+    pub fn with_plugin(plugin: A) -> Broker<A> {
+        let (sender, receiver) = mpsc::channel(100);
+
+        Broker {
+            sessions: HashMap::new(),
+            sender,
+            receiver,
+            subscriptions: SubscriptionTree::new(),
+            plugin,
+        }
     }
 
     pub fn sender(&self) -> Sender<BrokerMessage> {
@@ -693,6 +721,9 @@ impl Broker {
                 BrokerMessage::PublishFinalWill(client_id, final_will) => {
                     self.publish_final_will(client_id, final_will).await;
                 },
+                BrokerMessage::Authenticate(client_id, _) => {
+                    warn!("Ignoring unexpected authentication message from {}", client_id);
+                },
             }
         }
     }
@@ -703,6 +734,7 @@ mod tests {
     use crate::{
         broker::{Broker, BrokerMessage},
         client::ClientMessage,
+        plugin::Noop,
     };
     use mqtt_v5::types::{properties::*, ProtocolVersion, *};
     use tokio::{
@@ -802,7 +834,7 @@ mod tests {
 
     #[test]
     fn simple_client_test() {
-        let broker = Broker::new();
+        let broker = Broker::<Noop>::new();
         let sender = broker.sender();
 
         let runtime = Runtime::new().unwrap();
