@@ -333,7 +333,7 @@ fn encode_publish(packet: &PublishPacket, bytes: &mut BytesMut, protocol_version
         packet.response_topic.encode(bytes);
         packet.correlation_data.encode(bytes);
         packet.user_properties.encode(bytes);
-        packet.subscription_identifier.encode(bytes);
+        packet.subscription_identifiers.encode(bytes);
         packet.content_type.encode(bytes);
     }
 
@@ -660,7 +660,7 @@ mod tests {
             response_topic: None,
             correlation_data: None,
             user_properties: vec![],
-            subscription_identifier: None,
+            subscription_identifiers: Vec::with_capacity(0),
             content_type: None,
 
             payload: vec![22; 100].into(),
