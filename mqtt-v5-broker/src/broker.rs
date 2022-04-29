@@ -17,7 +17,8 @@ use std::{
 };
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-pub struct Session {
+struct Session {
+    #[allow(unused)]
     pub protocol_version: ProtocolVersion,
     // pub subscriptions: HashSet<SubscriptionTopic>,
     // pub shared_subscriptions: HashSet<SubscriptionTopic>,
