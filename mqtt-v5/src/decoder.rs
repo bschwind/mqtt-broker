@@ -192,7 +192,7 @@ fn decode_property(
             Ok(Some(Property::CorrelationData(CorrelationData(correlation_data))))
         },
         PropertyType::SubscriptionIdentifier => {
-            let subscription_identifier = read_u32!(bytes);
+            let subscription_identifier = read_variable_int!(bytes);
             Ok(Some(Property::SubscriptionIdentifier(SubscriptionIdentifier(VariableByteInt(
                 subscription_identifier,
             )))))
@@ -1153,7 +1153,7 @@ pub fn decode_mqtt(
 
 #[cfg(test)]
 mod tests {
-    use crate::{decoder::*, types::*};
+    use crate::{decoder::*, topic::TopicFilter, types::*};
     use bytes::BytesMut;
 
     #[test]
@@ -1195,5 +1195,49 @@ mod tests {
         // Digits 4
         normal_test(&[0x80, 0x80, 0x80, 0x01], 2097152);
         normal_test(&[0xFF, 0xFF, 0xFF, 0x7F], 268435455);
+    }
+
+    #[test]
+    fn test_decode_subscribe() {
+        // Subscribe packet *without* Subscription Identifier
+        let mut without_subscription_identifier = BytesMut::from(
+            [0x82, 0x0a, 0x00, 0x01, 0x00, 0x00, 0x04, 0x74, 0x65, 0x73, 0x74, 0x00].as_slice(),
+        );
+        let without_subscription_identifier_expected = Packet::Subscribe(SubscribePacket {
+            packet_id: 1,
+            subscription_identifier: None,
+            user_properties: vec![],
+            subscription_topics: vec![SubscriptionTopic {
+                topic_filter: TopicFilter::Concrete { filter: "test".into(), level_count: 1 },
+                maximum_qos: QoS::AtMostOnce,
+                no_local: false,
+                retain_as_published: false,
+                retain_handling: RetainHandling::SendAtSubscribeTime,
+            }],
+        });
+        let decoded = decode_mqtt(&mut without_subscription_identifier, ProtocolVersion::V500)
+            .unwrap()
+            .unwrap();
+        assert_eq!(without_subscription_identifier_expected, decoded);
+
+        // Subscribe packet with Subscription Identifier
+        let mut packet = BytesMut::from(
+            [0x82, 0x0c, 0xff, 0xf6, 0x02, 0x0b, 0x01, 0x00, 0x04, 0x74, 0x65, 0x73, 0x74, 0x02]
+                .as_slice(),
+        );
+        let decoded = decode_mqtt(&mut packet, ProtocolVersion::V500).unwrap().unwrap();
+        let with_subscription_identifier_expected = Packet::Subscribe(SubscribePacket {
+            packet_id: 65526,
+            subscription_identifier: Some(SubscriptionIdentifier(VariableByteInt(1))),
+            user_properties: vec![],
+            subscription_topics: vec![SubscriptionTopic {
+                topic_filter: TopicFilter::Concrete { filter: "test".into(), level_count: 1 },
+                maximum_qos: QoS::ExactlyOnce,
+                no_local: false,
+                retain_as_published: false,
+                retain_handling: RetainHandling::SendAtSubscribeTime,
+            }],
+        });
+        assert_eq!(with_subscription_identifier_expected, decoded);
     }
 }
