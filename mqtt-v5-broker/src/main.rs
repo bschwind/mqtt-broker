@@ -1,7 +1,7 @@
-use std::env;
+use std::{env, io};
 
 use bytes::BytesMut;
-use futures::{stream, SinkExt, StreamExt};
+use futures::{future::try_join_all, stream, SinkExt, StreamExt};
 use log::{debug, info, trace, warn};
 use mqtt_v5::{
     encoder,
@@ -17,8 +17,8 @@ use mqtt_v5_broker::{
 };
 use tokio::{
     net::{TcpListener, TcpStream},
-    runtime::Runtime,
     sync::mpsc::Sender,
+    task,
 };
 use tokio_util::codec::Framed;
 
@@ -142,34 +142,28 @@ async fn websocket_client_handler(stream: TcpStream, broker_tx: Sender<BrokerMes
     connected_client.run().await;
 }
 
-async fn server_loop(broker_tx: Sender<BrokerMessage>) {
+async fn server_loop(broker_tx: Sender<BrokerMessage>) -> io::Result<()> {
     let bind_addr = "0.0.0.0:1883";
-    let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 1883");
-
     info!("Listening on {}", bind_addr);
+    let listener = TcpListener::bind(bind_addr).await?;
 
     loop {
-        let (stream, addr) =
-            listener.accept().await.expect("Error in server_loop 'listener.accept()");
-        debug!("Client {} connected", addr);
+        let (stream, addr) = listener.accept().await?;
+        debug!("Client {} connected (tcp)", addr);
         client::spawn(stream, broker_tx.clone());
     }
 }
 
-async fn websocket_server_loop(broker_tx: Sender<BrokerMessage>) {
+async fn websocket_server_loop(broker_tx: Sender<BrokerMessage>) -> io::Result<()> {
     let bind_addr = "0.0.0.0:8080";
-    let listener = TcpListener::bind(bind_addr).await.expect("Couldn't bind to port 8080");
-
     info!("Listening on {}", bind_addr);
+    let listener = TcpListener::bind(bind_addr).await?;
 
     loop {
-        let (socket, addr) =
-            listener.accept().await.expect("Error in websocket_server_loop 'listener.accept()");
-        info!("Got a new socket from addr: {:?}", addr);
+        let (socket, addr) = listener.accept().await?;
+        debug!("Client {} connected (websocket)", addr);
 
-        let handler = websocket_client_handler(socket, broker_tx.clone());
-
-        tokio::spawn(handler);
+        websocket_client_handler(socket, broker_tx.clone()).await;
     }
 }
 
@@ -181,24 +175,21 @@ fn init_logging() {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
-
-    // Creating a Runtime does the following:
-    // * Spawn a background thread running a Reactor instance.
-    // * Start a ThreadPool for executing futures.
-    // * Run an instance of Timer per thread pool worker thread.
-    let runtime = Runtime::new()?;
 
     let broker = Broker::new();
     let broker_tx = broker.sender();
-    runtime.spawn(broker.run());
+    let broker = task::spawn(async {
+        broker.run().await;
+        Ok(())
+    });
 
-    let server_future = server_loop(broker_tx.clone());
-    let websocket_future = websocket_server_loop(broker_tx);
+    let listener = task::spawn(server_loop(broker_tx.clone()));
+    let websocket_listener = task::spawn(websocket_server_loop(broker_tx));
 
-    runtime.spawn(websocket_future);
-    runtime.block_on(server_future);
+    try_join_all([broker, listener, websocket_listener]).await?;
 
     Ok(())
 }
