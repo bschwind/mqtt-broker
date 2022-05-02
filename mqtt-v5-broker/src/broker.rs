@@ -9,11 +9,10 @@ use mqtt_v5::{
     types::{
         properties::{AssignedClientIdentifier, SessionExpiryInterval},
         AuthenticatePacket, ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectReason,
-        FinalWill, Packet, ProtocolVersion, PublishAckPacket, PublishAckReason,
-        PublishCompletePacket, PublishCompleteReason, PublishPacket, PublishReceivedPacket,
-        PublishReceivedReason, PublishReleasePacket, PublishReleaseReason, QoS, SubscribeAckPacket,
-        SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
-        UnsubscribePacket,
+        FinalWill, Packet, ProtocolVersion, PublishAckPacket, PublishCompletePacket,
+        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReleasePacket,
+        PublishReleaseReason, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
+        UnsubscribeAckPacket, UnsubscribeAckReason, UnsubscribePacket,
     },
 };
 use std::{
@@ -384,10 +383,22 @@ impl<A: Plugin> Broker<A> {
         let subscriptions = &mut self.subscriptions;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
+            let plugin_ack = self.plugin.on_subscribe(&packet);
+
             // If a Server receives a SUBSCRIBE packet containing a Topic Filter that
             // is identical to a Non‑shared Subscription’s Topic Filter for the current
             // Session, then it MUST replace that existing Subscription with a new Subscription.
-            for topic in &packet.subscription_topics {
+            for (topic, plugin_code) in
+                packet.subscription_topics.iter().zip(&plugin_ack.reason_codes)
+            {
+                // Check only subscriptions that the plugin didn't reject.
+                match plugin_code {
+                    SubscribeAckReason::GrantedQoSZero
+                    | SubscribeAckReason::GrantedQoSOne
+                    | SubscribeAckReason::GrantedQoSTwo => (),
+                    _ => continue,
+                }
+
                 let topic = &topic.topic_filter;
                 // Unsubscribe the old session from all topics it subscribed to.
                 session.subscription_tokens.retain(|(session_topic, token)| {
@@ -405,27 +416,28 @@ impl<A: Plugin> Broker<A> {
             let granted_qos_values = packet
                 .subscription_topics
                 .into_iter()
-                .map(|topic| {
-                    let session_subscription = SessionSubscription {
-                        client_id: client_id.clone(),
-                        maximum_qos: topic.maximum_qos,
-                    };
-                    let token = subscriptions.insert(&topic.topic_filter, session_subscription);
+                .zip(plugin_ack.reason_codes)
+                .map(|(topic, plugin_reason)| match plugin_reason {
+                    SubscribeAckReason::GrantedQoSZero
+                    | SubscribeAckReason::GrantedQoSOne
+                    | SubscribeAckReason::GrantedQoSTwo => {
+                        let session_subscription = SessionSubscription {
+                            client_id: client_id.clone(),
+                            maximum_qos: topic.maximum_qos,
+                        };
+                        let token = subscriptions.insert(&topic.topic_filter, session_subscription);
 
-                    session.subscription_tokens.push((topic.topic_filter.clone(), token));
-
-                    match topic.maximum_qos {
-                        QoS::AtMostOnce => SubscribeAckReason::GrantedQoSZero,
-                        QoS::AtLeastOnce => SubscribeAckReason::GrantedQoSOne,
-                        QoS::ExactlyOnce => SubscribeAckReason::GrantedQoSTwo,
-                    }
+                        session.subscription_tokens.push((topic.topic_filter.clone(), token));
+                        plugin_reason
+                    },
+                    reason => reason,
                 })
                 .collect();
 
             let subscribe_ack = SubscribeAckPacket {
                 packet_id: packet.packet_id,
-                reason_string: None,
-                user_properties: vec![],
+                reason_string: plugin_ack.reason_string,
+                user_properties: plugin_ack.user_properties,
                 reason_codes: granted_qos_values,
             };
 
@@ -565,54 +577,50 @@ impl<A: Plugin> Broker<A> {
     }
 
     async fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
-        let mut is_dup = false;
-
-        // For QoS2, ensure this packet isn't delivered twice. So if we have an outgoing
-        // publish receive with the same ID, just send the publish receive again but don't forward
-        // the message.
         match packet.qos {
-            QoS::AtMostOnce => {},
+            QoS::AtMostOnce => {
+                if self.plugin.on_publish_received_qos0(&packet) {
+                    self.publish_message(packet).await;
+                }
+            },
             QoS::AtLeastOnce => {
                 if let Some(session) = self.sessions.get_mut(&client_id) {
-                    let publish_ack = PublishAckPacket {
-                        packet_id: packet
-                            .packet_id
-                            .expect("Packet with QoS 1 should have a packet ID"),
-                        reason_code: PublishAckReason::Success,
-                        reason_string: None,
-                        user_properties: vec![],
-                    };
-
-                    session.send(ClientMessage::Packet(Packet::PublishAck(publish_ack))).await;
+                    let (publish, publish_ack) = self.plugin.on_publish_received_qos1(&packet);
+                    if let Some(publish_ack) = publish_ack {
+                        session.send(ClientMessage::Packet(Packet::PublishAck(publish_ack))).await;
+                    }
+                    if publish {
+                        self.publish_message(packet).await;
+                    }
                 }
             },
+            // For QoS2, ensure this packet isn't delivered twice. So if we have an outgoing
+            // publish receive with the same ID, just send the publish receive again but don't forward
+            // the message.
             QoS::ExactlyOnce => {
                 if let Some(session) = self.sessions.get_mut(&client_id) {
-                    let packet_id = packet.packet_id.unwrap();
-                    is_dup = session.outgoing_publish_receives.contains(&packet_id);
+                    let (mut publish, publish_rec) = self.plugin.on_publish_received_qos2(&packet);
 
-                    if !is_dup {
-                        session.outgoing_publish_receives.push(packet_id)
+                    if let Some(publish_recv) = publish_rec {
+                        let packet_id = publish_recv.packet_id;
+                        let is_dup = session.outgoing_publish_receives.contains(&packet_id);
+
+                        publish = publish && !is_dup;
+
+                        if !is_dup {
+                            session.outgoing_publish_receives.push(packet_id)
+                        }
+
+                        session
+                            .send(ClientMessage::Packet(Packet::PublishReceived(publish_recv)))
+                            .await;
                     }
 
-                    let publish_recv = PublishReceivedPacket {
-                        packet_id: packet
-                            .packet_id
-                            .expect("Packet with QoS 2 should have a packet ID"),
-                        reason_code: PublishReceivedReason::Success,
-                        reason_string: None,
-                        user_properties: vec![],
-                    };
-
-                    session
-                        .send(ClientMessage::Packet(Packet::PublishReceived(publish_recv)))
-                        .await;
+                    if publish {
+                        self.publish_message(packet).await;
+                    }
                 }
             },
-        }
-
-        if !is_dup {
-            self.publish_message(packet).await;
         }
     }
 
