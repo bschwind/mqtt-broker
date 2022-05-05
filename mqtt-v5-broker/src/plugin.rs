@@ -1,17 +1,16 @@
 use log::{trace, warn};
 use mqtt_v5::types::{
-    properties::{AuthenticationData, AuthenticationMethod},
-    *,
+    AuthenticatePacket, ConnectPacket, ConnectReason, PublishAckPacket, PublishAckReason,
+    PublishPacket, PublishReceivedPacket, PublishReceivedReason, QoS, SubscribeAckPacket,
+    SubscribeAckReason, SubscribePacket,
 };
 
 pub struct Noop;
 
 /// Result of a authentication attempt
 pub enum AuthentificationResult {
-    /// Authentification is successful.
-    Success,
-    /// Authentification failed. Send connect reason code to the client (ConnectAck)
-    Fail(ConnectReason),
+    /// Authentification reason
+    Reason(ConnectReason),
     /// Send this auth packet to the client and wait for the response.
     Packet(AuthenticatePacket),
 }
@@ -19,11 +18,7 @@ pub enum AuthentificationResult {
 /// Broker plugin
 pub trait Plugin {
     /// Called on connect packet reception
-    fn on_connect(
-        &mut self,
-        method: Option<&AuthenticationMethod>,
-        data: Option<&AuthenticationData>,
-    ) -> AuthentificationResult;
+    fn on_connect(&mut self, packet: &ConnectPacket) -> AuthentificationResult;
 
     /// Called on authenticate packet reception
     fn on_authenticate(&mut self, packet: &AuthenticatePacket) -> AuthentificationResult;
@@ -51,16 +46,17 @@ pub trait Plugin {
 
 /// Default noop authenticator
 impl Plugin for Noop {
-    fn on_connect(
-        &mut self,
-        _: Option<&AuthenticationMethod>,
-        _: Option<&AuthenticationData>,
-    ) -> AuthentificationResult {
-        AuthentificationResult::Success
+    fn on_connect(&mut self, packet: &ConnectPacket) -> AuthentificationResult {
+        // Just a hacky test...
+        if packet.user_name.is_some() && packet.user_name == packet.password {
+            AuthentificationResult::Reason(ConnectReason::Success)
+        } else {
+            AuthentificationResult::Reason(ConnectReason::BadUserNameOrPassword)
+        }
     }
 
     fn on_authenticate(&mut self, _: &AuthenticatePacket) -> AuthentificationResult {
-        AuthentificationResult::Success
+        AuthentificationResult::Reason(ConnectReason::Success)
     }
 
     fn on_subscribe(&mut self, packet: &SubscribePacket) -> SubscribeAckPacket {
