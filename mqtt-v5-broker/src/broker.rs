@@ -3,7 +3,7 @@ use crate::{
     plugin::{AuthentificationResult, Noop, Plugin},
     tree::SubscriptionTree,
 };
-use log::{debug, info, trace, warn};
+use log::{debug, info, warn};
 use mqtt_v5::{
     topic::TopicFilter,
     types::{
@@ -21,7 +21,7 @@ use std::{
 };
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
-    task, time,
+    time,
 };
 
 #[derive(Debug)]
@@ -193,7 +193,6 @@ pub enum WillDisconnectLogic {
 
 #[derive(Debug)]
 pub enum BrokerMessage {
-    Stats,
     NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
     Authenticate(String, AuthenticatePacket),
     Publish(String, Box<PublishPacket>),
@@ -239,18 +238,6 @@ impl<A: Plugin> Broker<A> {
     /// Construct a new Broker.
     pub fn with_plugin(plugin: A) -> Broker<A> {
         let (sender, receiver) = mpsc::channel(100);
-
-        {
-            let sender = sender.clone();
-            task::spawn(async move {
-                loop {
-                    time::sleep(time::Duration::from_secs(5)).await;
-                    if sender.send(BrokerMessage::Stats).await.is_err() {
-                        break;
-                    }
-                }
-            });
-        }
 
         Broker {
             sessions: HashMap::new(),
@@ -879,15 +866,9 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    fn stats(&self) {
-        trace!("sessions: {:#?}", self.sessions);
-        trace!("subscriptions: {:#?}", self.subscriptions);
-    }
-
     pub async fn run(mut self) {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
-                BrokerMessage::Stats => self.stats(),
                 BrokerMessage::NewClient(connect_packet, client_msg_sender) => {
                     self.handle_new_client(*connect_packet, client_msg_sender).await;
                 },

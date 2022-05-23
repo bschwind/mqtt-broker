@@ -5,7 +5,6 @@ use log::{debug, info};
 use mqtt_v5_broker::{
     broker::{Broker, BrokerMessage},
     client,
-    plugin::Noop,
 };
 use tokio::{net::TcpListener, sync::mpsc::Sender, task};
 
