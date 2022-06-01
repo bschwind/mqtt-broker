@@ -638,6 +638,8 @@ impl<A: Plugin> Broker<A> {
     fn handle_disconnect(&mut self, client_id: String, will_disconnect_logic: WillDisconnectLogic) {
         info!("Client ID {} disconnected", client_id);
 
+        self.plugin.on_disconnect(&client_id);
+
         let mut disconnect_will = None;
         let mut session_expiry_duration = None;
 

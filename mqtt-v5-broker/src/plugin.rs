@@ -20,6 +20,9 @@ pub trait Plugin {
     /// Called on connect packet reception
     fn on_connect(&mut self, packet: &ConnectPacket) -> AuthentificationResult;
 
+    /// Called on client disconnect
+    fn on_disconnect(&mut self, client_id: &str);
+
     /// Called on authenticate packet reception
     fn on_authenticate(&mut self, packet: &AuthenticatePacket) -> AuthentificationResult;
 
@@ -54,6 +57,8 @@ impl Plugin for Noop {
             AuthentificationResult::Reason(ConnectReason::BadUserNameOrPassword)
         }
     }
+
+    fn on_disconnect(&mut self, _: &str) {}
 
     fn on_authenticate(&mut self, _: &AuthenticatePacket) -> AuthentificationResult {
         AuthentificationResult::Reason(ConnectReason::Success)
