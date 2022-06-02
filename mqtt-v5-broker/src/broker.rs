@@ -24,6 +24,26 @@ use tokio::{
     time,
 };
 
+/// Client connected but not yet authenticated.
+struct UnauthenticatedSession {
+    connect_packet: ConnectPacket,
+    client_sender: Sender<ClientMessage>,
+}
+
+impl UnauthenticatedSession {
+    /// Construct a new UnauthenticatedSession.
+    fn new(connect_packet: ConnectPacket, client_sender: Sender<ClientMessage>) -> Self {
+        Self { connect_packet, client_sender }
+    }
+
+    /// Send a `ClientMessage` to the client via the channel handle.
+    /// This is a fire and forget operation because upon any error on the
+    /// connection the `Client` will send a `BrokerMessage::Disconnect`.
+    async fn send(&self, message: ClientMessage) {
+        drop(self.client_sender.send(message).await);
+    }
+}
+
 #[derive(Debug)]
 struct Session {
     #[allow(unused)]
@@ -31,9 +51,6 @@ struct Session {
     // pub subscriptions: HashSet<SubscriptionTopic>,
     // pub shared_subscriptions: HashSet<SubscriptionTopic>,
     pub client_sender: Option<Sender<ClientMessage>>,
-
-    // Authentication state
-    pub authenticated: bool,
 
     // Used to unsubscribe from topics
     subscription_tokens: Vec<(TopicFilter, u64)>,
@@ -58,14 +75,12 @@ struct Session {
 
 impl Session {
     pub fn new(
-        authenticated: bool,
         protocol_version: ProtocolVersion,
         will: Option<FinalWill>,
         session_expiry_interval: Option<Duration>,
         client_sender: Sender<ClientMessage>,
     ) -> Self {
         Self {
-            authenticated,
             protocol_version,
             // subscriptions: HashSet::new(),
             // shared_subscriptions: HashSet::new(),
@@ -85,14 +100,12 @@ impl Session {
     /// for a client which just connected.
     pub fn into_new_session(
         self,
-        authenticated: bool,
         protocol_version: ProtocolVersion,
         will: Option<FinalWill>,
         session_expiry_interval: Option<Duration>,
         client_sender: Sender<ClientMessage>,
     ) -> Self {
         Self {
-            authenticated,
             protocol_version,
             client_sender: Some(client_sender),
             session_expiry_interval,
@@ -191,22 +204,31 @@ pub enum WillDisconnectLogic {
     DoNotSend,
 }
 
+/// Unique identifier for a connection
+pub type ConnectionId = String;
+
+/// Client ID
+pub type ClientId = String;
+
 #[derive(Debug)]
 pub enum BrokerMessage {
-    NewClient(Box<ConnectPacket>, Sender<ClientMessage>),
-    Authenticate(String, AuthenticatePacket),
-    Publish(String, Box<PublishPacket>),
-    PublishAck(String, PublishAckPacket), // TODO - This can be handled by the client task
-    PublishRelease(String, PublishReleasePacket), // TODO - This can be handled by the client task
-    PublishReceived(String, PublishReceivedPacket),
-    PublishComplete(String, PublishCompletePacket),
-    PublishFinalWill(String, FinalWill),
-    Subscribe(String, SubscribePacket), // TODO - replace string client_id with int
-    Unsubscribe(String, UnsubscribePacket), // TODO - replace string client_id with int
-    Disconnect(String, WillDisconnectLogic),
+    Connect(ConnectionId, Box<ConnectPacket>, Sender<ClientMessage>),
+    Disconnect(ConnectionId, String, WillDisconnectLogic),
+    Authenticate(ConnectionId, ClientId, AuthenticatePacket),
+    Publish(ConnectionId, ClientId, Box<PublishPacket>),
+    PublishAck(ConnectionId, ClientId, PublishAckPacket), // TODO - This can be handled by the client task
+    PublishRelease(ConnectionId, ClientId, PublishReleasePacket), // TODO - This can be handled by the client task
+    PublishReceived(ConnectionId, ClientId, PublishReceivedPacket),
+    PublishComplete(ConnectionId, ClientId, PublishCompletePacket),
+    PublishFinalWill(ConnectionId, ClientId, FinalWill),
+    Subscribe(ConnectionId, ClientId, SubscribePacket), // TODO - replace string client_id with int
+    Unsubscribe(ConnectionId, ClientId, UnsubscribePacket), // TODO - replace string client_id with int
 }
 
 pub struct Broker<A = Noop> {
+    /// A map of client IDs to unauthenticated sessions. Once a client passes
+    /// authentication, the session exended is moved to the `session` map.
+    unauthenticated_sessions: HashMap<ConnectionId, UnauthenticatedSession>,
     sessions: HashMap<String, Session>,
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
@@ -227,6 +249,7 @@ impl<A: Plugin> Broker<A> {
         let (sender, receiver) = mpsc::channel(100);
 
         Broker {
+            unauthenticated_sessions: HashMap::new(),
             sessions: HashMap::new(),
             sender,
             receiver,
@@ -240,6 +263,7 @@ impl<A: Plugin> Broker<A> {
         let (sender, receiver) = mpsc::channel(100);
 
         Broker {
+            unauthenticated_sessions: HashMap::new(),
             sessions: HashMap::new(),
             sender,
             receiver,
@@ -294,33 +318,35 @@ impl<A: Plugin> Broker<A> {
         // If the Server accepts a connection with Clean Start set to 0 and the Server has Session State for the ClientID,
         // it MUST set Session Present to 1 in the CONNACK packet, otherwise it MUST set Session Present to 0 in the CONNACK packet.
         if new_client_clean_start {
-            return None;
+            None
+        } else {
+            existing_session
         }
-
-        existing_session
     }
 
     async fn handle_new_client(
         &mut self,
+        connection_id: ConnectionId,
         connect_packet: ConnectPacket,
         client_msg_sender: Sender<ClientMessage>,
     ) {
-        debug!("Trying to authenticate client {}", connect_packet.client_id);
-        let authenticated = match self.plugin.on_connect(&connect_packet) {
+        debug!(
+            "Trying to authenticate client {} (connection {})",
+            connect_packet.client_id, connection_id
+        );
+        match self.plugin.on_connect(&connect_packet) {
             AuthentificationResult::Reason(ConnectReason::Success) => {
                 info!("Authentification successful for client {}", connect_packet.client_id);
-                true
+                self.handle_authenticated_client(connect_packet, client_msg_sender).await;
             },
             AuthentificationResult::Reason(reason_code) => {
                 info!(
-                    "Authentification result for client {}: {:?}",
+                    "Authentification reason code for client {} is {:?}",
                     connect_packet.client_id, reason_code
                 );
                 let connect_ack = ConnectAckPacket {
-                    // TODO: is this correct?
                     session_present: false,
                     reason_code,
-                    // TODO: is this correct?
                     session_expiry_interval: None,
                     receive_maximum: None,
                     maximum_qos: None,
@@ -339,48 +365,60 @@ impl<A: Plugin> Broker<A> {
                     authentication_method: None,
                     authentication_data: None,
                 };
+
+                // Send a disconnect packet to the client. Ignore send errors because
+                // the client could already be disconnected and the rx handle of this
+                // channel is dropped.
                 debug!(
-                    "Sending CONNACK to client {} with reson code {:?}",
+                    "Sending CONNACK to client ID {} with reason code {:?}",
                     connect_packet.client_id, reason_code
                 );
                 client_msg_sender
                     .send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)))
                     .await
-                    .expect("Failed to send Connect Acknowledgement");
+                    .ok();
 
                 debug!(
-                    "Sending DISCONNECT to client {} with disconnect reason {:?}",
+                    "Sending DISCONNECT to client {} with disconnect reason code {:?}",
                     connect_packet.client_id,
                     DisconnectReason::NotAuthorized
                 );
                 client_msg_sender
                     .send(ClientMessage::Disconnect(DisconnectReason::NotAuthorized))
                     .await
-                    .expect("Failed to send Disconnect");
-                return;
+                    .ok();
             },
             AuthentificationResult::Packet(packet) => {
                 client_msg_sender
                     .send(ClientMessage::Packet(Packet::Authenticate(packet)))
                     .await
-                    .expect("Failed to send Connect Acknowledgement");
-                false
+                    .ok();
+                let client_id = connect_packet.client_id.clone();
+                info!("Adding unauthenticated session for client ID {}", client_id);
+                let unauthenticated_session =
+                    UnauthenticatedSession::new(connect_packet, client_msg_sender);
+                self.unauthenticated_sessions.insert(connection_id, unauthenticated_session);
             },
-        };
+        }
+    }
 
+    async fn handle_authenticated_client(
+        &mut self,
+        connect_packet: ConnectPacket,
+        client_msg_sender: Sender<ClientMessage>,
+    ) {
         let mut takeover_session = self
             .take_over_existing_client(&connect_packet.client_id, connect_packet.clean_start)
             .await;
         let session_present = takeover_session.is_some();
 
-        // TODO(flxo) Calling `resend_packets` after `take_over_existing_client` feels strange since a disconnect is sent in there.
         if let Some(existing_session) = &mut takeover_session {
             existing_session.resend_packets().await;
         }
 
         info!(
-            "Client ID {} connected (Version: {:?}, Authenticated: {})",
-            connect_packet.client_id, connect_packet.protocol_version, authenticated
+            "Client ID {} connected (Version: {:?})",
+            connect_packet.client_id, connect_packet.protocol_version
         );
 
         let session_expiry_interval = match connect_packet.session_expiry_interval {
@@ -393,62 +431,68 @@ impl<A: Plugin> Broker<A> {
             },
             None => None,
         };
-        let session_expiry_duration =
-            session_expiry_interval.map(|i| Duration::from_secs(i.0 as u64));
+        let session_expiry_duration = session_expiry_interval.map(|i| {
+            let duration = Duration::from_secs(i.0 as u64);
+            debug!(
+                "Client ID {} Session expiry interval is {:?}",
+                connect_packet.client_id, duration
+            );
+            duration
+        });
 
-        if authenticated {
-            // Send conack if the auth is already successful and complete
-            let connect_ack = ConnectAckPacket {
-                // Variable header
-                session_present,
-                reason_code: ConnectReason::Success,
+        // The user provided plugin decided when processing the Connect packet that this
+        // client is authenticated. This could be the case for no authentication needed or
+        // a username password authentication. The broker shall not wait for addition
+        // `Authentification` packets from the client before the client is in the authenticated
+        // state.
+        // If the client is not authenticated the `ConnectAckPacket` is sent once authentification
+        // succeeds or fails.
+        // Send conack if the auth is already successful and complete
+        let connect_ack = ConnectAckPacket {
+            // Variable header
+            session_present,
+            reason_code: ConnectReason::Success,
 
-                // Properties
-                session_expiry_interval,
-                receive_maximum: None,
-                maximum_qos: None,
-                retain_available: None,
-                maximum_packet_size: None,
-                assigned_client_identifier: Some(AssignedClientIdentifier(
-                    connect_packet.client_id.clone(),
-                )),
-                topic_alias_maximum: None,
-                reason_string: None,
-                user_properties: Vec::with_capacity(0),
-                wildcard_subscription_available: None,
-                subscription_identifiers_available: None,
-                shared_subscription_available: None,
-                server_keep_alive: None,
-                response_information: None,
-                server_reference: None,
-                authentication_method: None,
-                authentication_data: None,
-            };
+            // Properties
+            session_expiry_interval,
+            receive_maximum: None,
+            maximum_qos: None,
+            retain_available: None,
+            maximum_packet_size: None,
+            assigned_client_identifier: Some(AssignedClientIdentifier(
+                connect_packet.client_id.clone(),
+            )),
+            topic_alias_maximum: None,
+            reason_string: None,
+            user_properties: Vec::with_capacity(0),
+            wildcard_subscription_available: None,
+            subscription_identifiers_available: None,
+            shared_subscription_available: None,
+            server_keep_alive: None,
+            response_information: None,
+            server_reference: None,
+            authentication_method: None,
+            authentication_data: None,
+        };
 
-            // A newly connected client should have empty channel and the queuing the connect ack *must* fit in the channel.
-            client_msg_sender
-                .send(ClientMessage::Packet(Packet::ConnectAck(connect_ack)))
-                .await
-                .expect("Failed to send Connect Acknowledgement");
-        }
+        // If the client disconnected in the meantime, the rx part of the client handle is dropped
+        // and a send attempt will fail. Ignore this error, because the disconnection is handled
+        // by a BrokerMessage::Disconnect.
+        client_msg_sender.send(ClientMessage::Packet(Packet::ConnectAck(connect_ack))).await.ok();
 
         let new_session = if let Some(existing_session) = takeover_session {
             let mut new_session = existing_session.into_new_session(
-                authenticated,
                 connect_packet.protocol_version,
                 connect_packet.will,
                 session_expiry_duration,
                 client_msg_sender,
             );
 
-            if authenticated {
-                new_session.resend_packets().await;
-            }
+            new_session.resend_packets().await;
 
             new_session
         } else {
             Session::new(
-                authenticated,
                 connect_packet.protocol_version,
                 connect_packet.will,
                 session_expiry_duration,
@@ -459,73 +503,90 @@ impl<A: Plugin> Broker<A> {
         self.sessions.insert(connect_packet.client_id, new_session);
     }
 
-    async fn handle_authenticate(&mut self, client_id: String, packet: AuthenticatePacket) {
-        if let Some(session) = self.sessions.get_mut(&client_id) {
-            debug!("Trying to authenticate client {}", client_id);
-            let authentification = self.plugin.on_authenticate(&packet);
+    /// Handle authenticate packets. Query the plugin and send a `ConnectAckPacket` or `Authenticate`
+    /// packet if needed. If the plugin authenticates the client (session) proceed with the session
+    /// setup etc. and remove the unauthenticated session.
+    async fn handle_authenticate(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: AuthenticatePacket,
+    ) {
+        debug!("Trying to authenticate client {} (connection {})", client_id, connection_id);
 
-            let reason_code = match authentification {
-                AuthentificationResult::Reason(ConnectReason::Success) => {
-                    info!("Authentification successful for client {}", client_id);
-                    session.authenticated = true;
-                    ConnectReason::Success
-                },
-                AuthentificationResult::Reason(reason_code) => {
-                    info!("Authentification result for client {}: {:?}", client_id, reason_code);
-                    reason_code
-                },
-                AuthentificationResult::Packet(packet) => {
-                    session.send(ClientMessage::Packet(Packet::Authenticate(packet))).await;
-                    return;
-                },
-            };
+        let entry = match self.unauthenticated_sessions.entry(connection_id) {
+            Entry::Occupied(entry) => entry,
+            Entry::Vacant(entry) => {
+                warn!("Received authenticate packet for unknown client ID {}", entry.key());
+                return;
+            },
+        };
 
-            // TODO: fill in correct values
-            let connect_ack = ConnectAckPacket {
-                session_present: false,
-                reason_code,
-                session_expiry_interval: None,
-                receive_maximum: None,
-                maximum_qos: None,
-                retain_available: None,
-                maximum_packet_size: None,
-                assigned_client_identifier: None,
-                topic_alias_maximum: None,
-                reason_string: None,
-                user_properties: Vec::with_capacity(0),
-                wildcard_subscription_available: None,
-                subscription_identifiers_available: None,
-                shared_subscription_available: None,
-                server_keep_alive: None,
-                response_information: None,
-                server_reference: None,
-                authentication_method: None,
-                authentication_data: None,
-            };
-            debug!("Sending CONNACK to client {} with reson code {:?}", client_id, reason_code);
-            session.send(ClientMessage::Packet(Packet::ConnectAck(connect_ack))).await;
+        match self.plugin.on_authenticate(&packet) {
+            AuthentificationResult::Reason(ConnectReason::Success) => {
+                let (client_id, UnauthenticatedSession { client_sender, connect_packet }) =
+                    entry.remove_entry();
+                info!("Authentification successful for client ID {}", client_id);
+                self.handle_authenticated_client(connect_packet, client_sender).await;
+            },
+            AuthentificationResult::Reason(reason_code) => {
+                info!("Authentification result for client ID {} is {:?}", entry.key(), reason_code);
+                let connect_ack = ConnectAckPacket {
+                    // Variable header
+                    session_present: false,
+                    reason_code,
 
-            if reason_code != ConnectReason::Success {
-                session.resend_packets().await;
+                    // Properties
+                    session_expiry_interval: None,
+                    receive_maximum: None,
+                    maximum_qos: None,
+                    retain_available: None,
+                    maximum_packet_size: None,
+                    assigned_client_identifier: None,
+                    topic_alias_maximum: None,
+                    reason_string: None,
+                    user_properties: Vec::with_capacity(0),
+                    wildcard_subscription_available: None,
+                    subscription_identifiers_available: None,
+                    shared_subscription_available: None,
+                    server_keep_alive: None,
+                    response_information: None,
+                    server_reference: None,
+                    authentication_method: None,
+                    authentication_data: None,
+                };
 
-                debug!(
-                    "Sending DISCONNECT to client {} with disconnect reason {:?}",
-                    client_id,
-                    DisconnectReason::NotAuthorized
-                );
+                // If the client disconnected in the meantime, the rx part of the client handle is dropped
+                // and a send attempt will fail. Ignore this error, because the disconnection is handled
+                // by a BrokerMessage::Disconnect.
+                let session = entry.get();
+                session.send(ClientMessage::Packet(Packet::ConnectAck(connect_ack))).await;
                 session.send(ClientMessage::Disconnect(DisconnectReason::NotAuthorized)).await;
-            }
+            },
+            AuthentificationResult::Packet(packet) => {
+                let session = entry.get();
+                session.send(ClientMessage::Packet(Packet::Authenticate(packet))).await;
+            },
         }
     }
 
-    async fn handle_subscribe(&mut self, client_id: String, packet: SubscribePacket) {
+    async fn handle_subscribe(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: SubscribePacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!(
+                "Ignoring subscribe packet from unauthenticated client ID {} on connection {}",
+                client_id, connection_id
+            );
+            return;
+        }
+
         let subscriptions = &mut self.subscriptions;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
-
             let plugin_ack = self.plugin.on_subscribe(&packet);
 
             // If a Server receives a SUBSCRIBE packet containing a Topic Filter that
@@ -588,14 +649,23 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    async fn handle_unsubscribe(&mut self, client_id: String, packet: UnsubscribePacket) {
+    async fn handle_unsubscribe(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: UnsubscribePacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!(
+                "Ignoring unsubscribe packet from unauthenticated client ID {} on connection {}",
+                client_id, connection_id
+            );
+            return;
+        }
+
         let subscriptions = &mut self.subscriptions;
 
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
-
             for filter in &packet.topic_filters {
                 // Unsubscribe the old session from all topics it subscribed to.
                 session.subscription_tokens.retain(|(session_topic, token)| {
@@ -635,7 +705,17 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    fn handle_disconnect(&mut self, client_id: String, will_disconnect_logic: WillDisconnectLogic) {
+    fn handle_disconnect(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: String,
+        will_disconnect_logic: WillDisconnectLogic,
+    ) {
+        if self.unauthenticated_sessions.remove(&connection_id).is_some() {
+            info!("Removing unauthenticated session for client ID {}", client_id);
+            return;
+        }
+
         info!("Client ID {} disconnected", client_id);
 
         self.plugin.on_disconnect(&client_id);
@@ -647,7 +727,6 @@ impl<A: Plugin> Broker<A> {
             {
                 let session = session_entry.get_mut();
                 session.client_sender.take();
-                session.authenticated = false;
             }
 
             if let Some(expiry_interval) = session_entry.get().session_expiry_interval {
@@ -690,7 +769,11 @@ impl<A: Plugin> Broker<A> {
                         tokio::spawn(async move {
                             time::sleep(will_send_delay_duration).await;
                             broker_sender
-                                .send(BrokerMessage::PublishFinalWill(client_id, will))
+                                .send(BrokerMessage::PublishFinalWill(
+                                    connection_id,
+                                    client_id,
+                                    will,
+                                ))
                                 .await
                                 .expect("Failed to send final will message to broker");
                         });
@@ -707,9 +790,6 @@ impl<A: Plugin> Broker<A> {
 
         for session_subscription in self.subscriptions.matching_subscribers(topic) {
             if let Some(session) = sessions.get_mut(&session_subscription.client_id) {
-                if !session.authenticated {
-                    todo!("Session is not authenticated");
-                }
                 let outgoing_packet_id = match session_subscription.maximum_qos {
                     QoS::AtLeastOnce | QoS::ExactlyOnce => {
                         Some(session.store_outgoing_publish(
@@ -732,11 +812,21 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    async fn handle_publish(&mut self, client_id: String, packet: PublishPacket) {
+    async fn handle_publish(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: PublishPacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!(
+                "Discarding publish packet from unauthenticated client ID {} on connection {}",
+                client_id, connection_id
+            );
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             match packet.qos {
                 QoS::AtMostOnce => {
                     if self.plugin.on_publish_received_qos0(&packet) {
@@ -781,20 +871,37 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    fn handle_publish_ack(&mut self, client_id: String, packet: PublishAckPacket) {
+    fn handle_publish_ack(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: PublishAckPacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!(
+                "Discarding publish ack packet from unauthenticated client ID {} on connection {}",
+                client_id, connection_id
+            );
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             session.remove_outgoing_publish(packet.packet_id);
         }
     }
 
-    async fn handle_publish_release(&mut self, client_id: String, packet: PublishReleasePacket) {
+    async fn handle_publish_release(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: PublishReleasePacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!("Discarding publish release packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             if let Some(pos) =
                 session.outgoing_publish_receives.iter().position(|x| *x == packet.packet_id)
             {
@@ -812,11 +919,18 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    async fn handle_publish_received(&mut self, client_id: String, packet: PublishReceivedPacket) {
+    async fn handle_publish_received(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: PublishReceivedPacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!("Discarding publish received packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             if let Some(pos) = session.outgoing_packets.iter().position(|p| {
                 p.qos == QoS::ExactlyOnce
                     && p.packet_id.map(|id| id == packet.packet_id).unwrap_or(false)
@@ -838,11 +952,18 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    fn handle_publish_complete(&mut self, client_id: String, packet: PublishCompletePacket) {
+    fn handle_publish_complete(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        packet: PublishCompletePacket,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!("Discarding publish complete packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             if let Some(pos) =
                 session.outgoing_publish_released.iter().position(|x| *x == packet.packet_id)
             {
@@ -851,11 +972,21 @@ impl<A: Plugin> Broker<A> {
         }
     }
 
-    async fn publish_final_will(&mut self, client_id: String, final_will: FinalWill) {
+    async fn publish_final_will(
+        &mut self,
+        connection_id: ConnectionId,
+        client_id: ClientId,
+        final_will: FinalWill,
+    ) {
+        if self.unauthenticated_sessions.contains_key(&connection_id) {
+            warn!(
+                "Discarding final will packet from unauthenticated client ID {} on connection {}",
+                client_id, connection_id
+            );
+            return;
+        }
+
         if let Some(session) = self.sessions.get_mut(&client_id) {
-            if !session.authenticated {
-                todo!("Session is not authenticated");
-            }
             if session.client_sender.is_some() {
                 // They've reconnected, don't send out the will message.
                 self.publish_message(final_will.into()).await;
@@ -871,38 +1002,38 @@ impl<A: Plugin> Broker<A> {
     pub async fn run(mut self) {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
-                BrokerMessage::NewClient(connect_packet, client_msg_sender) => {
-                    self.handle_new_client(*connect_packet, client_msg_sender).await;
+                BrokerMessage::Connect(connection_id, connect_packet, client_msg_sender) => {
+                    self.handle_new_client(connection_id, *connect_packet, client_msg_sender).await;
                 },
-                BrokerMessage::Authenticate(client_id, packet) => {
-                    self.handle_authenticate(client_id, packet).await;
+                BrokerMessage::Disconnect(connection_id, client_id, will_disconnect_logic) => {
+                    self.handle_disconnect(connection_id, client_id, will_disconnect_logic);
                 },
-                BrokerMessage::Subscribe(client_id, packet) => {
-                    self.handle_subscribe(client_id, packet).await;
+                BrokerMessage::Authenticate(connection_id, client_id, packet) => {
+                    self.handle_authenticate(connection_id, client_id, packet).await;
                 },
-                BrokerMessage::Unsubscribe(client_id, packet) => {
-                    self.handle_unsubscribe(client_id, packet).await;
+                BrokerMessage::Subscribe(connection_id, client_id, packet) => {
+                    self.handle_subscribe(connection_id, client_id, packet).await;
                 },
-                BrokerMessage::Disconnect(client_id, will_disconnect_logic) => {
-                    self.handle_disconnect(client_id, will_disconnect_logic);
+                BrokerMessage::Unsubscribe(conneciton_id, client_id, packet) => {
+                    self.handle_unsubscribe(conneciton_id, client_id, packet).await;
                 },
-                BrokerMessage::Publish(client_id, packet) => {
-                    self.handle_publish(client_id, *packet).await;
+                BrokerMessage::Publish(connection_id, client_id, packet) => {
+                    self.handle_publish(connection_id, client_id, *packet).await;
                 },
-                BrokerMessage::PublishAck(client_id, packet) => {
-                    self.handle_publish_ack(client_id, packet);
+                BrokerMessage::PublishAck(connection_id, client_id, packet) => {
+                    self.handle_publish_ack(connection_id, client_id, packet);
                 },
-                BrokerMessage::PublishRelease(client_id, packet) => {
-                    self.handle_publish_release(client_id, packet).await;
+                BrokerMessage::PublishRelease(connection_id, client_id, packet) => {
+                    self.handle_publish_release(connection_id, client_id, packet).await;
                 },
-                BrokerMessage::PublishReceived(client_id, packet) => {
-                    self.handle_publish_received(client_id, packet).await;
+                BrokerMessage::PublishReceived(connection_id, client_id, packet) => {
+                    self.handle_publish_received(connection_id, client_id, packet).await;
                 },
-                BrokerMessage::PublishComplete(client_id, packet) => {
-                    self.handle_publish_complete(client_id, packet);
+                BrokerMessage::PublishComplete(connection_id, client_id, packet) => {
+                    self.handle_publish_complete(connection_id, client_id, packet);
                 },
-                BrokerMessage::PublishFinalWill(client_id, final_will) => {
-                    self.publish_final_will(client_id, final_will).await;
+                BrokerMessage::PublishFinalWill(connection_id, client_id, final_will) => {
+                    self.publish_final_will(connection_id, client_id, final_will).await;
                 },
             }
         }
@@ -947,8 +1078,10 @@ mod tests {
             password: Some("test".into()),
         };
 
+        let connection_id = nanoid::nanoid!();
+
         let _ = broker_tx
-            .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
+            .send(BrokerMessage::Connect(connection_id, Box::new(connect_packet), sender))
             .await
             .unwrap();
 
@@ -982,6 +1115,7 @@ mod tests {
 
         let _ = broker_tx
             .send(BrokerMessage::Subscribe(
+                "CONNECTION".to_string(),
                 "TEST".to_string(),
                 SubscribePacket {
                     packet_id: 0,

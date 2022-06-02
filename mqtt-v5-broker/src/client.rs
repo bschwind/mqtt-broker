@@ -1,4 +1,4 @@
-use crate::broker::{BrokerMessage, WillDisconnectLogic};
+use crate::broker::{BrokerMessage, ConnectionId, WillDisconnectLogic};
 use futures::{
     future::{self, Either},
     stream, Sink, SinkExt, Stream, StreamExt,
@@ -175,6 +175,7 @@ where
 }
 
 struct UnconnectedClient<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>> {
+    connection_id: ConnectionId,
     packet_stream: ST,
     packet_sink: SI,
     broker_tx: Sender<BrokerMessage>,
@@ -184,7 +185,8 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
     UnconnectedClient<ST, SI>
 {
     pub fn new(packet_stream: ST, packet_sink: SI, broker_tx: Sender<BrokerMessage>) -> Self {
-        Self { packet_stream, packet_sink, broker_tx }
+        let connection_id = nanoid!();
+        Self { connection_id, packet_stream, packet_sink, broker_tx }
     }
 
     pub async fn handshake(mut self) -> Result<Client<ST, SI>, ProtocolError> {
@@ -223,11 +225,18 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                 let self_tx = sender.clone();
 
                 self.broker_tx
-                    .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
+                    .send(BrokerMessage::Connect(
+                        self.connection_id.clone(),
+                        Box::new(connect_packet),
+                        sender,
+                    ))
                     .await
                     .expect("Couldn't send NewClient message to broker");
 
+                let connection_id = self.connection_id;
+
                 Ok(Client::new(
+                    connection_id,
                     client_id,
                     protocol_version,
                     keepalive_seconds,
@@ -257,7 +266,8 @@ pub enum ClientMessage {
 }
 
 pub struct Client<ST: Stream<Item = PacketResult>, SI: Sink<Packet, Error = EncodeError>> {
-    id: String,
+    connection_id: ConnectionId,
+    client_id: String,
     _protocol_version: ProtocolVersion,
     keepalive_seconds: Option<u16>,
     packet_stream: ST,
@@ -272,7 +282,8 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        id: String,
+        connection_id: ConnectionId,
+        client_id: String,
         protocol_version: ProtocolVersion,
         keepalive_seconds: Option<u16>,
         packet_stream: ST,
@@ -282,7 +293,8 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         self_tx: Sender<ClientMessage>,
     ) -> Self {
         Self {
-            id,
+            connection_id,
+            client_id,
             _protocol_version: protocol_version,
             keepalive_seconds,
             packet_stream,
@@ -294,6 +306,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
     }
 
     async fn handle_socket_reads(
+        connection_id: ConnectionId,
         mut stream: ST,
         client_id: String,
         keepalive_seconds: Option<u16>,
@@ -329,13 +342,21 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                     Ok(frame) => match frame {
                         Packet::Subscribe(packet) => {
                             broker_tx
-                                .send(BrokerMessage::Subscribe(client_id.clone(), packet))
+                                .send(BrokerMessage::Subscribe(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send Subscribe message to broker");
                         },
                         Packet::Unsubscribe(packet) => {
                             broker_tx
-                                .send(BrokerMessage::Unsubscribe(client_id.clone(), packet))
+                                .send(BrokerMessage::Unsubscribe(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send Unsubscribe message to broker");
                         },
@@ -351,31 +372,51 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                             }
 
                             broker_tx
-                                .send(BrokerMessage::Publish(client_id.clone(), Box::new(packet)))
+                                .send(BrokerMessage::Publish(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    Box::new(packet),
+                                ))
                                 .await
                                 .expect("Couldn't send Publish message to broker");
                         },
                         Packet::PublishAck(packet) => {
                             broker_tx
-                                .send(BrokerMessage::PublishAck(client_id.clone(), packet))
+                                .send(BrokerMessage::PublishAck(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send PublishAck message to broker");
                         },
                         Packet::PublishRelease(packet) => {
                             broker_tx
-                                .send(BrokerMessage::PublishRelease(client_id.clone(), packet))
+                                .send(BrokerMessage::PublishRelease(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send PublishRelease message to broker");
                         },
                         Packet::PublishReceived(packet) => {
                             broker_tx
-                                .send(BrokerMessage::PublishReceived(client_id.clone(), packet))
+                                .send(BrokerMessage::PublishReceived(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send PublishReceive message to broker");
                         },
                         Packet::PublishComplete(packet) => {
                             broker_tx
-                                .send(BrokerMessage::PublishComplete(client_id.clone(), packet))
+                                .send(BrokerMessage::PublishComplete(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send PublishCompelte message to broker");
                         },
@@ -395,6 +436,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
                             broker_tx
                                 .send(BrokerMessage::Disconnect(
+                                    connection_id,
                                     client_id.clone(),
                                     will_disconnect_logic,
                                 ))
@@ -405,7 +447,11 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         },
                         Packet::Authenticate(packet) => {
                             broker_tx
-                                .send(BrokerMessage::Authenticate(client_id.clone(), packet))
+                                .send(BrokerMessage::Authenticate(
+                                    connection_id.clone(),
+                                    client_id.clone(),
+                                    packet,
+                                ))
                                 .await
                                 .expect("Couldn't send Authentivate message to self");
                         },
@@ -422,7 +468,11 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         }
 
         broker_tx
-            .send(BrokerMessage::Disconnect(client_id.clone(), WillDisconnectLogic::Send))
+            .send(BrokerMessage::Disconnect(
+                connection_id,
+                client_id.clone(),
+                WillDisconnectLogic::Send,
+            ))
             .await
             .expect("Couldn't send Disconnect message to broker");
     }
@@ -473,8 +523,9 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
     pub async fn run(self) {
         let task_rx = Self::handle_socket_reads(
+            self.connection_id.clone(),
             self.packet_stream,
-            self.id.clone(),
+            self.client_id.clone(),
             self.keepalive_seconds,
             self.broker_tx,
             self.self_tx,
@@ -489,6 +540,6 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
         // expressions will be unable to continue. If parallelism is required, spawn
         // each async expression using tokio::spawn and pass the join handle to select!.
         future::join(task_rx, task_tx).await;
-        debug!("Client ID {} task exit", self.id);
+        debug!("Client ID {} task exit", self.client_id);
     }
 }
