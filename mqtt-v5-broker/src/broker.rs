@@ -205,7 +205,7 @@ pub enum WillDisconnectLogic {
 }
 
 /// Unique identifier for a connection
-pub type ConnectionId = String;
+pub type ConnectionId = u64;
 
 /// Client ID
 pub type ClientId = String;
@@ -1014,8 +1014,8 @@ impl<A: Plugin> Broker<A> {
                 BrokerMessage::Subscribe(connection_id, client_id, packet) => {
                     self.handle_subscribe(connection_id, client_id, packet).await;
                 },
-                BrokerMessage::Unsubscribe(conneciton_id, client_id, packet) => {
-                    self.handle_unsubscribe(conneciton_id, client_id, packet).await;
+                BrokerMessage::Unsubscribe(connection_id, client_id, packet) => {
+                    self.handle_unsubscribe(connection_id, client_id, packet).await;
                 },
                 BrokerMessage::Publish(connection_id, client_id, packet) => {
                     self.handle_publish(connection_id, client_id, *packet).await;
@@ -1078,10 +1078,8 @@ mod tests {
             password: Some("test".into()),
         };
 
-        let connection_id = nanoid::nanoid!();
-
         let _ = broker_tx
-            .send(BrokerMessage::Connect(connection_id, Box::new(connect_packet), sender))
+            .send(BrokerMessage::Connect(0, Box::new(connect_packet), sender))
             .await
             .unwrap();
 
@@ -1115,7 +1113,7 @@ mod tests {
 
         let _ = broker_tx
             .send(BrokerMessage::Subscribe(
-                "CONNECTION".to_string(),
+                0,
                 "TEST".to_string(),
                 SubscribePacket {
                     packet_id: 0,

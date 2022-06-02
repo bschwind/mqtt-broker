@@ -12,7 +12,7 @@ use mqtt_v5::{
     },
 };
 use nanoid::nanoid;
-use std::{marker::Unpin, time::Duration};
+use std::{marker::Unpin, sync::atomic::AtomicU64, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::mpsc::{self, Receiver, Sender},
@@ -28,6 +28,14 @@ use mqtt_v5::{
         WsUpgraderCodec,
     },
 };
+use std::sync::atomic::Ordering;
+
+/// Generate a new unique connection id
+fn next_connection_id() -> u64 {
+    static CONNECTION_ID: AtomicU64 = AtomicU64::new(0);
+    // This operation wraps around on overflow.
+    CONNECTION_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 type PacketResult = Result<Packet, DecodeError>;
 
@@ -185,7 +193,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
     UnconnectedClient<ST, SI>
 {
     pub fn new(packet_stream: ST, packet_sink: SI, broker_tx: Sender<BrokerMessage>) -> Self {
-        let connection_id = nanoid!();
+        let connection_id = next_connection_id();
         Self { connection_id, packet_stream, packet_sink, broker_tx }
     }
 
@@ -226,7 +234,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
                 self.broker_tx
                     .send(BrokerMessage::Connect(
-                        self.connection_id.clone(),
+                        self.connection_id,
                         Box::new(connect_packet),
                         sender,
                     ))
@@ -343,7 +351,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::Subscribe(packet) => {
                             broker_tx
                                 .send(BrokerMessage::Subscribe(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -353,7 +361,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::Unsubscribe(packet) => {
                             broker_tx
                                 .send(BrokerMessage::Unsubscribe(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -373,7 +381,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
                             broker_tx
                                 .send(BrokerMessage::Publish(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     Box::new(packet),
                                 ))
@@ -383,7 +391,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::PublishAck(packet) => {
                             broker_tx
                                 .send(BrokerMessage::PublishAck(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -393,7 +401,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::PublishRelease(packet) => {
                             broker_tx
                                 .send(BrokerMessage::PublishRelease(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -403,7 +411,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::PublishReceived(packet) => {
                             broker_tx
                                 .send(BrokerMessage::PublishReceived(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -413,7 +421,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::PublishComplete(packet) => {
                             broker_tx
                                 .send(BrokerMessage::PublishComplete(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -448,7 +456,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
                         Packet::Authenticate(packet) => {
                             broker_tx
                                 .send(BrokerMessage::Authenticate(
-                                    connection_id.clone(),
+                                    connection_id,
                                     client_id.clone(),
                                     packet,
                                 ))
@@ -523,7 +531,7 @@ impl<ST: Stream<Item = PacketResult> + Unpin, SI: Sink<Packet, Error = EncodeErr
 
     pub async fn run(self) {
         let task_rx = Self::handle_socket_reads(
-            self.connection_id.clone(),
+            self.connection_id,
             self.packet_stream,
             self.client_id.clone(),
             self.keepalive_seconds,
