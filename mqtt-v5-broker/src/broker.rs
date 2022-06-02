@@ -24,13 +24,13 @@ use tokio::{
     time,
 };
 
-/// Client connected but not yet authenticated.
-struct UnauthenticatedSession {
+/// A client connected but not yet authenticated.
+struct UnauthenticatedConnection {
     connect_packet: ConnectPacket,
     client_sender: Sender<ClientMessage>,
 }
 
-impl UnauthenticatedSession {
+impl UnauthenticatedConnection {
     /// Construct a new UnauthenticatedSession.
     fn new(connect_packet: ConnectPacket, client_sender: Sender<ClientMessage>) -> Self {
         Self { connect_packet, client_sender }
@@ -226,14 +226,13 @@ pub enum BrokerMessage {
 }
 
 pub struct Broker<A = Noop> {
-    /// A map of client IDs to unauthenticated sessions. Once a client passes
-    /// authentication, the session exended is moved to the `session` map.
-    unauthenticated_sessions: HashMap<ConnectionId, UnauthenticatedSession>,
+    /// A map of client IDs to unauthenticated connections. Once a client passes
+    /// authentication, the connection is promoted to a session.
+    unauthenticated_connections: HashMap<ConnectionId, UnauthenticatedConnection>,
     sessions: HashMap<String, Session>,
     sender: Sender<BrokerMessage>,
     receiver: Receiver<BrokerMessage>,
     subscriptions: SubscriptionTree<SessionSubscription>,
-    #[allow(unused)]
     plugin: A,
 }
 
@@ -249,7 +248,7 @@ impl<A: Plugin> Broker<A> {
         let (sender, receiver) = mpsc::channel(100);
 
         Broker {
-            unauthenticated_sessions: HashMap::new(),
+            unauthenticated_connections: HashMap::new(),
             sessions: HashMap::new(),
             sender,
             receiver,
@@ -263,7 +262,7 @@ impl<A: Plugin> Broker<A> {
         let (sender, receiver) = mpsc::channel(100);
 
         Broker {
-            unauthenticated_sessions: HashMap::new(),
+            unauthenticated_connections: HashMap::new(),
             sessions: HashMap::new(),
             sender,
             receiver,
@@ -394,10 +393,10 @@ impl<A: Plugin> Broker<A> {
                     .await
                     .ok();
                 let client_id = connect_packet.client_id.clone();
-                info!("Adding unauthenticated session for client ID {}", client_id);
+                info!("Adding unauthenticated connection for client ID {}", client_id);
                 let unauthenticated_session =
-                    UnauthenticatedSession::new(connect_packet, client_msg_sender);
-                self.unauthenticated_sessions.insert(connection_id, unauthenticated_session);
+                    UnauthenticatedConnection::new(connect_packet, client_msg_sender);
+                self.unauthenticated_connections.insert(connection_id, unauthenticated_session);
             },
         }
     }
@@ -514,7 +513,7 @@ impl<A: Plugin> Broker<A> {
     ) {
         debug!("Trying to authenticate client {} (connection {})", client_id, connection_id);
 
-        let entry = match self.unauthenticated_sessions.entry(connection_id) {
+        let entry = match self.unauthenticated_connections.entry(connection_id) {
             Entry::Occupied(entry) => entry,
             Entry::Vacant(entry) => {
                 warn!("Received authenticate packet for unknown client ID {}", entry.key());
@@ -524,7 +523,7 @@ impl<A: Plugin> Broker<A> {
 
         match self.plugin.on_authenticate(&packet) {
             AuthentificationResult::Reason(ConnectReason::Success) => {
-                let (client_id, UnauthenticatedSession { client_sender, connect_packet }) =
+                let (client_id, UnauthenticatedConnection { client_sender, connect_packet }) =
                     entry.remove_entry();
                 info!("Authentification successful for client ID {}", client_id);
                 self.handle_authenticated_client(connect_packet, client_sender).await;
@@ -576,7 +575,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: SubscribePacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!(
                 "Ignoring subscribe packet from unauthenticated client ID {} on connection {}",
                 client_id, connection_id
@@ -655,7 +654,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: UnsubscribePacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!(
                 "Ignoring unsubscribe packet from unauthenticated client ID {} on connection {}",
                 client_id, connection_id
@@ -711,7 +710,7 @@ impl<A: Plugin> Broker<A> {
         client_id: String,
         will_disconnect_logic: WillDisconnectLogic,
     ) {
-        if self.unauthenticated_sessions.remove(&connection_id).is_some() {
+        if self.unauthenticated_connections.remove(&connection_id).is_some() {
             info!("Removing unauthenticated session for client ID {}", client_id);
             return;
         }
@@ -818,7 +817,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: PublishPacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!(
                 "Discarding publish packet from unauthenticated client ID {} on connection {}",
                 client_id, connection_id
@@ -877,7 +876,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: PublishAckPacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!(
                 "Discarding publish ack packet from unauthenticated client ID {} on connection {}",
                 client_id, connection_id
@@ -896,7 +895,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: PublishReleasePacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!("Discarding publish release packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
             return;
         }
@@ -925,7 +924,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: PublishReceivedPacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!("Discarding publish received packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
             return;
         }
@@ -958,7 +957,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         packet: PublishCompletePacket,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!("Discarding publish complete packet from unauthenticated client ID {} on connection {}", client_id, connection_id);
             return;
         }
@@ -978,7 +977,7 @@ impl<A: Plugin> Broker<A> {
         client_id: ClientId,
         final_will: FinalWill,
     ) {
-        if self.unauthenticated_sessions.contains_key(&connection_id) {
+        if self.unauthenticated_connections.contains_key(&connection_id) {
             warn!(
                 "Discarding final will packet from unauthenticated client ID {} on connection {}",
                 client_id, connection_id
