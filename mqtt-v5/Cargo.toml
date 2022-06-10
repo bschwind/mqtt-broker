@@ -16,7 +16,7 @@ websocket = ["codec", "websocket-codec", "sha1", "base64"]
 [dependencies]
 bytes = "1"
 num_enum = "0.4"
-tokio-util = { optional = true, version = "0.6", features = ["codec"] }
+tokio-util = { optional = true, version = "0.7", features = ["codec"] }
 websocket-codec = { optional = true, version = "0.5" }
 sha1 = { optional = true, version = "0.6" }
 base64 = { optional = true, version = "0.11" }
