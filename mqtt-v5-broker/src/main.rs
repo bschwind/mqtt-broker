@@ -48,7 +48,7 @@ fn init_logging() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
-    let broker = Broker::new();
+    let broker = Broker::default();
     let broker_tx = broker.sender();
     let broker = task::spawn(async {
         broker.run().await;
