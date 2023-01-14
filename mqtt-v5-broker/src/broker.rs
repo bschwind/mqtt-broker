@@ -735,10 +735,7 @@ mod tests {
             password: None,
         };
 
-        let _ = broker_tx
-            .send(BrokerMessage::NewClient(Box::new(connect_packet), sender))
-            .await
-            .unwrap();
+        broker_tx.send(BrokerMessage::NewClient(Box::new(connect_packet), sender)).await.unwrap();
 
         let resp = receiver.recv().await.unwrap();
 
@@ -768,7 +765,7 @@ mod tests {
             }))
         );
 
-        let _ = broker_tx
+        broker_tx
             .send(BrokerMessage::Subscribe(
                 "TEST".to_string(),
                 SubscribePacket {

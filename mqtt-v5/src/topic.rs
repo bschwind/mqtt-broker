@@ -7,7 +7,7 @@ use std::str::FromStr;
 /// A filter for subscribers to indicate which topics they want
 /// to receive messages from. Can contain wildcards.
 /// Shared topic filter example: $share/group_name_a/home/kitchen/temperature
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TopicFilter {
     Concrete { filter: String, level_count: u32 },
     Wildcard { filter: String, level_count: u32 },
@@ -17,7 +17,7 @@ pub enum TopicFilter {
 
 /// A topic name publishers use when sending MQTT messages.
 /// Cannot contain wildcards.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topic {
     topic_name: String,
     level_count: u32,
@@ -29,7 +29,7 @@ impl Topic {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TopicLevel<'a> {
     Concrete(&'a str),
     SingleLevelWildcard,
@@ -45,7 +45,7 @@ impl<'a> TopicLevel<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TopicParseError {
     EmptyTopic,
     TopicTooLong,
