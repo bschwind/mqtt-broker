@@ -555,7 +555,7 @@ pub fn encode_mqtt(packet: &Packet, bytes: &mut BytesMut, protocol_version: Prot
     first_byte_val |= packet.fixed_header_flags();
 
     bytes.put_u8(first_byte_val);
-    encode_variable_int(remaining_length as u32, bytes);
+    encode_variable_int(remaining_length, bytes);
 
     match packet {
         Packet::Connect(p) => encode_connect(p, bytes, protocol_version),
