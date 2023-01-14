@@ -22,6 +22,8 @@ Wikipedia has a fairly [comprehensive list](https://en.wikipedia.org/wiki/Compar
 
 [PubSubRT](https://github.com/alttch/psrt/) is another interesting Rust-based broker. It's an alternative to MQTT, not an implementation of it.
 
+[NATS.rs](https://github.com/nats-io/nats.rs) seems really nice too, but I haven't looked further into it yet.
+
 ## Spec Compliance
 
 This broker is currently _not_ compliant with the MQTT V5 spec. Visit the [spec compliance milestone](https://github.com/bschwind/mqtt-broker/milestone/1) to see the current progress.
