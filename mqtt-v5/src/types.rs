@@ -34,12 +34,6 @@ pub enum DecodeError {
     BadTransport, // When errors occur on a lower level transport like WS
 }
 
-impl PartialEq for DecodeError {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
 #[derive(Debug)]
 pub enum EncodeError {
     BadTransport,
