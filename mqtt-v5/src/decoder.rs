@@ -1290,11 +1290,10 @@ mod tests {
     #[test]
     fn test_decode_variable_int_crash() {
         let number: u32 = u32::MAX;
-        assert_eq!(
-            decode_variable_int(&mut Cursor::new(&mut BytesMut::from(
-                number.to_be_bytes().as_slice()
-            ))),
-            Err(DecodeError::InvalidRemainingLength)
-        );
+        let result = decode_variable_int(&mut Cursor::new(&mut BytesMut::from(
+            number.to_be_bytes().as_slice(),
+        )));
+
+        assert!(matches!(result, Err(DecodeError::InvalidRemainingLength)));
     }
 }
