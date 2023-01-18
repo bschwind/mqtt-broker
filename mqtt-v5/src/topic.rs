@@ -17,6 +17,13 @@ pub enum TopicFilter {
 
 /// A topic name publishers use when sending MQTT messages.
 /// Cannot contain wildcards.
+///
+/// # Example
+/// ```rust
+/// use std::str::FromStr;
+/// use mqtt_v5::topic::Topic;
+/// let topic = Topic::from_str("my_topic").unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Topic {
     topic_name: String,
