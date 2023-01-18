@@ -94,28 +94,22 @@ macro_rules! read_property {
 }
 
 fn decode_variable_int(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<u32>, DecodeError> {
-    let mut multiplier = 1;
+    let mut multiplier: u32 = 1;
     let mut value: u32 = 0;
 
-    loop {
+    for _ in 0..4 {
         let encoded_byte = read_u8!(bytes);
 
-        // TODO(bschwind) - Fuzzer panicked at 'attempt to multiply with overflow'
-        //                  Test with this input: [81, 251, 230, 255, 255, 255]
         value += ((encoded_byte & 0b0111_1111) as u32) * multiplier;
-
-        if multiplier > (128 * 128 * 128) {
-            return Err(DecodeError::InvalidRemainingLength);
-        }
 
         multiplier *= 128;
 
         if encoded_byte & 0b1000_0000 == 0b0000_0000 {
-            break;
+            return Ok(Some(value));
         }
     }
 
-    Ok(Some(value))
+    Err(DecodeError::InvalidRemainingLength)
 }
 
 fn decode_string(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<String>, DecodeError> {
@@ -1292,5 +1286,14 @@ mod tests {
             }],
         });
         assert_eq!(with_subscription_identifier_expected, decoded);
+    }
+    #[test]
+    fn test_decode_variable_int_crash() {
+        let number: u32 = u32::MAX;
+        let result = decode_variable_int(&mut Cursor::new(&mut BytesMut::from(
+            number.to_be_bytes().as_slice(),
+        )));
+
+        assert!(matches!(result, Err(DecodeError::InvalidRemainingLength)));
     }
 }
