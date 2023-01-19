@@ -61,6 +61,7 @@ pub enum TopicParseError {
     InvalidSharedGroupName,
     EmptySharedGroupName,
     WildcardOrNullInTopic,
+    ReservedTopicBeginning,
 }
 
 impl std::fmt::Display for Topic {
@@ -199,11 +200,13 @@ impl FromStr for Topic {
     type Err = TopicParseError;
 
     fn from_str(topic: &str) -> Result<Self, Self::Err> {
-        // TODO - Consider disallowing leading $ characters
 
         // Topics cannot be empty
         if topic.is_empty() {
             return Err(TopicParseError::EmptyTopic);
+        }
+        if topic.starts_with('$') {
+            return Err(TopicParseError::ReservedTopicBeginning);
         }
 
         // Topics cannot exceed the byte length in the MQTT spec
@@ -212,11 +215,9 @@ impl FromStr for Topic {
         }
 
         // Topics cannot contain wildcards or null characters
-        let topic_contains_wildcards = topic.contains(|x: char| {
+        if topic.contains(|x: char| {
             x == SINGLE_LEVEL_WILDCARD || x == MULTI_LEVEL_WILDCARD || x == '\0'
-        });
-
-        if topic_contains_wildcards {
+        }) {
             return Err(TopicParseError::WildcardOrNullInTopic);
         }
 

@@ -56,11 +56,13 @@ pub enum ProtocolError {
 }
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, TryFromPrimitive)]
 pub enum ProtocolVersion {
     V311 = 4,
+    #[default]
     V500 = 5,
 }
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableByteInt(pub u32);
@@ -254,8 +256,9 @@ pub enum PacketType {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, TryFromPrimitive)]
 pub enum QoS {
+    #[default]
     AtMostOnce = 0,  // QoS 0
     AtLeastOnce = 1, // QoS 1
     ExactlyOnce = 2, // QoS 2
@@ -605,8 +608,9 @@ pub mod properties {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, TryFromPrimitive)]
 pub enum ConnectReason {
+    #[default]
     Success = 0,
     UnspecifiedError = 128,
     MalformedPacket = 129,
@@ -813,7 +817,7 @@ impl PacketSize for SubscriptionTopic {
 }
 
 // Control Packets
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct ConnectPacket {
     // Variable Header
     pub protocol_name: String,
@@ -862,7 +866,7 @@ impl PropertySize for ConnectPacket {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct ConnectAckPacket {
     // Variable header
     pub session_present: bool,
@@ -981,6 +985,34 @@ impl From<FinalWill> for PublishPacket {
     }
 }
 
+impl PublishPacket{
+    pub fn new(topic: Topic, payload: Bytes) -> Self {
+        Self {
+            is_duplicate: false,
+            qos: QoS::AtMostOnce,
+            retain: false,
+
+            // Variable header
+            topic,
+            packet_id: None,
+
+            // Payload
+            payload,
+
+            // Properties
+            payload_format_indicator: None,
+            message_expiry_interval: None,
+            topic_alias: None,
+            response_topic: None,
+            correlation_data: None,
+            user_properties: Vec::with_capacity(0),
+            subscription_identifiers: Vec::with_capacity(0),
+            content_type: None,
+
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct PublishAckPacket {
     // Variable header
@@ -1065,7 +1097,7 @@ impl PropertySize for PublishCompletePacket {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct SubscribePacket {
     // Variable header
     pub packet_id: u16,

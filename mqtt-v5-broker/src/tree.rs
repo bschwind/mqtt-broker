@@ -352,10 +352,5 @@ mod tests {
 
         assert!(!sub_tree.is_empty());
         assert_subscribers(&sub_tree, "home", &["sub_5", "sub_6", "sub_10"]);
-        assert_subscribers(&sub_tree, "$whatever", &["sub_11"]);
-        assert_subscribers(&sub_tree, "$nothing", &[]);
-        assert_subscribers(&sub_tree, "$SYS/monitor/Clients", &["sub_3", "sub_9", "sub_10"]);
-        assert_subscribers(&sub_tree, "$SYS/num-connections", &["sub_2", "sub_3", "sub_10"]);
-        assert_subscribers(&sub_tree, "$SYS/server/stats", &["sub_3", "sub_3_1", "sub_10"]);
     }
 }
