@@ -1097,7 +1097,7 @@ impl PropertySize for PublishCompletePacket {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SubscribePacket {
     // Variable header
     pub packet_id: u16,
@@ -1108,6 +1108,16 @@ pub struct SubscribePacket {
 
     // Payload
     pub subscription_topics: Vec<SubscriptionTopic>,
+}
+impl SubscribePacket {
+    pub fn new(subscription_topics: Vec<SubscriptionTopic>) -> Self{
+        Self {
+            packet_id: 0,
+            subscription_identifier: None,
+            user_properties: Vec::with_capacity(0),
+            subscription_topics,
+        }
+    }
 }
 
 impl PropertySize for SubscribePacket {
