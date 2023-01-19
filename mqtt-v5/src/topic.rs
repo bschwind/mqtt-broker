@@ -15,6 +15,15 @@ pub enum TopicFilter {
     SharedWildcard { group_name: String, filter: String, level_count: u32 },
 }
 
+impl TopicFilter {
+    pub fn new_concrete(filter: String) -> Self{
+        TopicFilter::Concrete {
+            filter,
+            level_count: 1,
+        }
+    }
+}
+
 /// A topic name publishers use when sending MQTT messages.
 /// Cannot contain wildcards.
 ///

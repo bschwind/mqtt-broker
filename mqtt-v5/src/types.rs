@@ -810,6 +810,18 @@ pub struct SubscriptionTopic {
     pub retain_handling: RetainHandling,
 }
 
+impl SubscriptionTopic {
+    pub fn new_concrete(name: &str) -> Self{
+        SubscriptionTopic{
+            topic_filter: TopicFilter::new_concrete(name.to_string()),
+            maximum_qos: Default::default(),
+            no_local: false,
+            retain_as_published: false,
+            retain_handling: RetainHandling::SendAtSubscribeTime,
+        }
+    }
+}
+
 impl PacketSize for SubscriptionTopic {
     fn calc_size(&self, protocol_version: ProtocolVersion) -> u32 {
         self.topic_filter.calc_size(protocol_version) + 1
