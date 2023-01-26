@@ -63,7 +63,6 @@ pub enum ProtocolVersion {
     V500 = 5,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableByteInt(pub u32);
 
@@ -259,7 +258,7 @@ pub enum PacketType {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, TryFromPrimitive)]
 pub enum QoS {
     #[default]
-    AtMostOnce = 0,  // QoS 0
+    AtMostOnce = 0, // QoS 0
     AtLeastOnce = 1, // QoS 1
     ExactlyOnce = 2, // QoS 2
 }
@@ -811,8 +810,8 @@ pub struct SubscriptionTopic {
 }
 
 impl SubscriptionTopic {
-    pub fn new_concrete(name: &str) -> Self{
-        SubscriptionTopic{
+    pub fn new_concrete(name: &str) -> Self {
+        SubscriptionTopic {
             topic_filter: TopicFilter::new_concrete(name.to_string()),
             maximum_qos: Default::default(),
             no_local: false,
@@ -997,7 +996,7 @@ impl From<FinalWill> for PublishPacket {
     }
 }
 
-impl PublishPacket{
+impl PublishPacket {
     pub fn new(topic: Topic, payload: Bytes) -> Self {
         Self {
             is_duplicate: false,
@@ -1020,7 +1019,6 @@ impl PublishPacket{
             user_properties: Vec::with_capacity(0),
             subscription_identifiers: Vec::with_capacity(0),
             content_type: None,
-
         }
     }
 }
@@ -1122,7 +1120,7 @@ pub struct SubscribePacket {
     pub subscription_topics: Vec<SubscriptionTopic>,
 }
 impl SubscribePacket {
-    pub fn new(subscription_topics: Vec<SubscriptionTopic>) -> Self{
+    pub fn new(subscription_topics: Vec<SubscriptionTopic>) -> Self {
         Self {
             packet_id: 0,
             subscription_identifier: None,
@@ -1175,6 +1173,12 @@ pub struct UnsubscribePacket {
 
     // Payload
     pub topic_filters: Vec<TopicFilter>,
+}
+
+impl UnsubscribePacket {
+    pub fn new(topic_filters: Vec<TopicFilter>) -> Self {
+        Self { packet_id: 0, user_properties: Vec::with_capacity(0), topic_filters }
+    }
 }
 
 impl PropertySize for UnsubscribePacket {
