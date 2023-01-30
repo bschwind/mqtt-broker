@@ -747,7 +747,7 @@ pub enum AuthenticateReason {
 // Payloads
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinalWill {
-    pub topic: String, // TODO(bschwind) - Use Topic type here.
+    pub topic: Topic,
     pub payload: Bytes,
     pub qos: QoS,
     pub should_retain: bool,
@@ -962,7 +962,7 @@ impl From<FinalWill> for PublishPacket {
             retain: will.should_retain,
 
             // Variable header
-            topic: will.topic.parse().unwrap(), // TODO(bschwind) - Add a Topic type directly to FinalWill
+            topic: will.topic,
             packet_id: None,
 
             // Properties
