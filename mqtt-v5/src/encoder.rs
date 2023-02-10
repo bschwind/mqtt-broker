@@ -266,7 +266,7 @@ fn encode_connect(packet: &ConnectPacket, bytes: &mut BytesMut, protocol_version
             will.user_properties.encode(bytes);
         }
 
-        encode_string(&will.topic.topic_name(), bytes);
+        encode_string(will.topic.topic_name(), bytes);
         encode_binary_data(&will.payload, bytes);
     }
 
