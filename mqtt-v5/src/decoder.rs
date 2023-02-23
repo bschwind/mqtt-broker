@@ -408,8 +408,8 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
             })?);
         }
 
-        let topic = Topic::from_str(read_string!(bytes).as_str())
-            .map_err(|_| DecodeError::InvalidTopicFilter(TopicParseError::TopicTooLong))?;
+        let topic =
+            Topic::from_str(read_string!(bytes).as_str()).map_err(DecodeError::InvalidTopic)?;
         let payload = read_binary_data!(bytes);
 
         Some(FinalWill {
