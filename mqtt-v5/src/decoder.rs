@@ -1,14 +1,17 @@
-use crate::types::{
-    properties::*, AuthenticatePacket, AuthenticateReason, ConnectAckPacket, ConnectPacket,
-    ConnectReason, DecodeError, DisconnectPacket, DisconnectReason, FinalWill, Packet, PacketType,
-    ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
-    PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
-    PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling, SubscribeAckPacket,
-    SubscribeAckReason, SubscribePacket, SubscriptionTopic, UnsubscribeAckPacket,
-    UnsubscribeAckReason, UnsubscribePacket, VariableByteInt,
+use crate::{
+    topic::Topic,
+    types::{
+        properties::*, AuthenticatePacket, AuthenticateReason, ConnectAckPacket, ConnectPacket,
+        ConnectReason, DecodeError, DisconnectPacket, DisconnectReason, FinalWill, Packet,
+        PacketType, ProtocolVersion, PublishAckPacket, PublishAckReason, PublishCompletePacket,
+        PublishCompleteReason, PublishPacket, PublishReceivedPacket, PublishReceivedReason,
+        PublishReleasePacket, PublishReleaseReason, QoS, RetainHandling, SubscribeAckPacket,
+        SubscribeAckReason, SubscribePacket, SubscriptionTopic, UnsubscribeAckPacket,
+        UnsubscribeAckReason, UnsubscribePacket, VariableByteInt,
+    },
 };
 use bytes::{Buf, Bytes, BytesMut};
-use std::{convert::TryFrom, io::Cursor};
+use std::{convert::TryFrom, io::Cursor, str::FromStr};
 
 macro_rules! return_if_none {
     ($x: expr) => {{
@@ -405,7 +408,8 @@ fn decode_connect(bytes: &mut Cursor<&mut BytesMut>) -> Result<Option<Packet>, D
             })?);
         }
 
-        let topic = read_string!(bytes);
+        let topic =
+            Topic::from_str(read_string!(bytes).as_str()).map_err(DecodeError::InvalidTopic)?;
         let payload = read_binary_data!(bytes);
 
         Some(FinalWill {
