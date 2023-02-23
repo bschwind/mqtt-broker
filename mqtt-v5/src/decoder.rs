@@ -1,5 +1,5 @@
 use crate::{
-    topic::{Topic, TopicParseError},
+    topic::Topic,
     types::{
         properties::*, AuthenticatePacket, AuthenticateReason, ConnectAckPacket, ConnectPacket,
         ConnectReason, DecodeError, DisconnectPacket, DisconnectReason, FinalWill, Packet,
