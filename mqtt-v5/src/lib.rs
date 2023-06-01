@@ -77,7 +77,9 @@ pub mod codec {
 
 #[cfg(feature = "websocket")]
 pub mod websocket {
+    use base64::{engine::general_purpose::STANDARD as STANDARD_BASE64_ENGINE, Engine};
     use bytes::BytesMut;
+    use sha1::Digest;
     use tokio_util::codec::{Decoder, Encoder};
 
     pub use websocket_codec as codec;
@@ -219,8 +221,8 @@ pub mod websocket {
                         let mut hasher = sha1::Sha1::new();
                         hasher.update(websocket_key.as_bytes());
                         hasher.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-                        let sha1_bytes = hasher.digest().bytes();
-                        let sha1_str = base64::encode(&sha1_bytes);
+                        let sha1_bytes = hasher.finalize();
+                        let sha1_str = STANDARD_BASE64_ENGINE.encode(sha1_bytes);
 
                         let _rest = buf.split_to(s.len());
 
